@@ -1,4 +1,6 @@
-module top (
+module top #(
+    parameter string FILE = ""
+) (
     input logic i_clk,
     input logic i_rst
 );
@@ -20,7 +22,9 @@ module top (
       .o_mem_wr_data(mem_wr_data)
   );
 
-  memory u_memory (
+  memory #(
+      .FILE(FILE)
+  ) u_memory (
       .i_clk(i_clk),
       .i_rst(i_rst),
 

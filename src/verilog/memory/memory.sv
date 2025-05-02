@@ -1,4 +1,6 @@
-module memory (
+module memory #(
+    parameter string FILE
+) (
     input logic i_clk,
     input logic i_rst,
 
@@ -10,6 +12,13 @@ module memory (
 );
 
   reg [7:0] memory[65535:0];
+
+  initial begin
+    if (FILE != "") begin
+      $display("Loading file %s", FILE);
+      $readmemh(FILE, memory, 16'h0100);
+    end
+  end
 
   always_ff @(posedge i_clk, posedge i_rst) begin
     if (i_rst) begin

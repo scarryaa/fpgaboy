@@ -15,6 +15,12 @@ int main(int argc, char **argv, char **env) {
   m_trace->open("top_waveform.vcd");
 
   while (sim_time < MAX_SIM_TIME) {
+    if (sim_time < 10) {
+      dut->i_rst = 1;
+    } else {
+      dut->i_rst = 0;
+    }
+
     dut->i_clk ^= 1;
     dut->eval();
     m_trace->dump(sim_time);

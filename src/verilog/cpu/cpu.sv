@@ -70,6 +70,8 @@ module cpu (
       o_mem_rd_addr <= 16'h0;
       o_mem_wr_addr <= 16'h0;
       o_mem_wr_data <= 8'h0;
+      pc <= 16'h0100;
+      sp <= 16'hFFFE;
       state <= FETCH;
     end else begin
       o_mem_wr_en   <= 1'b0;
