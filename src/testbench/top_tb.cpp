@@ -3,7 +3,7 @@
 #include <verilated.h>
 #include <verilated_vcd_c.h>
 
-#define MAX_SIM_TIME 20
+#define MAX_SIM_TIME 2000
 vluint64_t sim_time = 0;
 
 int main(int argc, char **argv, char **env) {
@@ -12,7 +12,7 @@ int main(int argc, char **argv, char **env) {
   Verilated::traceEverOn(true);
   VerilatedVcdC *m_trace = new VerilatedVcdC;
   dut->trace(m_trace, 5);
-  m_trace->open("waveform.vcd");
+  m_trace->open("top_waveform.vcd");
 
   while (sim_time < MAX_SIM_TIME) {
     dut->i_clk ^= 1;

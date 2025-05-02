@@ -30,4 +30,63 @@ module cpu (
       .o_reg_b(reg_b)
   );
 
+  typedef enum logic [2:0] {
+    FETCH,
+    DECODE,
+    EXECUTE
+  } cpu_state_t;
+
+  cpu_state_t state, next_state;
+
+  logic [7:0] ir;
+  logic [15:0] pc, sp;
+
+  // State logic
+  always_comb begin
+    case (state)
+      FETCH:  next_state = DECODE;
+      DECODE: next_state = EXECUTE;
+
+      default: next_state = FETCH;
+    endcase
+  end
+
+  // State machine
+  always_ff @(posedge i_clk, posedge i_rst) begin
+    if (i_rst) begin
+      o_mem_wr_en <= 1'b0;
+      o_mem_rd_addr <= 16'h0;
+      o_mem_wr_addr <= 16'h0;
+      o_mem_wr_data <= 8'h0;
+      state <= FETCH;
+    end else begin
+      o_mem_wr_en   <= 1'b0;
+      o_mem_wr_data <= 8'h0;
+
+      case (state)
+        FETCH: begin
+          o_mem_rd_addr <= pc;
+          pc <= pc + 1;
+        end
+
+        DECODE: begin
+          ir <= i_mem_rd_data;
+
+          case (ir)
+            8'h00: ;
+
+            default: ;
+          endcase
+        end
+
+        EXECUTE: begin
+        end
+
+        default: ;
+      endcase
+
+      state <= next_state;
+    end
+  end
+
 endmodule
