@@ -40,6 +40,18 @@ module cpu (
 
   logic [7:0] ir;
   logic [15:0] pc, sp;
+  logic [2:0] m_cycle;
+  logic [2:0] t_state;
+
+  function [2:0] get_m_cycles(logic [7:0] ir);
+    case (ir)
+      default: get_m_cycles = 1;
+    endcase
+  endfunction
+
+  function [2:0] get_t_states();
+    get_t_states = 4;
+  endfunction
 
   // State logic
   always_comb begin
@@ -85,7 +97,16 @@ module cpu (
         default: ;
       endcase
 
-      state <= next_state;
+      if (m_cycle == get_m_cycles(ir) - 1) begin
+        m_cycle <= 0;
+        t_state <= 0;
+        state   <= next_state;
+      end else if (t_state == get_t_states() - 1) begin
+        t_state <= 0;
+        m_cycle <= m_cycle + 1;
+      end else begin
+        t_state <= t_state + 1;
+      end
     end
   end
 
