@@ -1,6 +1,12 @@
 module cpu (
     input logic i_clk,
-    input logic i_rst
+    input logic i_rst,
+
+    input logic [7:0] i_mem_rd_data,
+    output logic [15:0] o_mem_rd_addr,
+    output logic o_mem_wr_en,
+    output logic [15:0] o_mem_wr_addr,
+    output logic [7:0] o_mem_wr_data
 );
 
   logic [2:0] reg_a_sel;
