@@ -14,8 +14,12 @@ module cpu (
   logic [2:0] reg_c_sel;
   logic [2:0] reg_wr_sel;
   logic reg_wr_en;
+  logic bc_wr_en;
+  logic de_wr_en;
   logic hl_wr_en;
   logic [7:0] reg_wr_data;
+  logic [15:0] bc_wr_data;
+  logic [15:0] de_wr_data;
   logic [15:0] hl_wr_data;
   logic [7:0] reg_a;
   logic [7:0] reg_b;
@@ -30,8 +34,12 @@ module cpu (
       .i_reg_c_sel(reg_c_sel),
       .i_reg_wr_sel(reg_wr_sel),
       .i_reg_wr_en(reg_wr_en),
+      .i_bc_wr_en(bc_wr_en),
+      .i_de_wr_en(de_wr_en),
       .i_hl_wr_en(hl_wr_en),
       .i_reg_wr_data(reg_wr_data),
+      .i_bc_wr_data(bc_wr_data),
+      .i_de_wr_data(de_wr_data),
       .i_hl_wr_data(hl_wr_data),
       .o_reg_a(reg_a),
       .o_reg_b(reg_b),
@@ -77,6 +85,7 @@ module cpu (
   logic is_ld_a_imm16;
   logic is_ldh_c_a;
   logic is_ldh_a_c;
+  logic is_ld_rr_imm;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -89,6 +98,7 @@ module cpu (
       8'hE0, 8'hF0: get_m_cycles = 3;
       8'hEA, 8'hFA: get_m_cycles = 4;
       8'hE2, 8'hF2: get_m_cycles = 2;
+      8'h01, 8'h11, 8'h21, 8'h31: get_m_cycles = 3;
 
       default: get_m_cycles = 1;
     endcase
@@ -117,7 +127,7 @@ module cpu (
         case (state)
           FETCH:          next_state = DECODE;
           DECODE: begin
-            if (is_ld_a_imm16 || is_ld_imm16_a) next_state = FETCH_IMM16_LO;
+            if (is_ld_a_imm16 || is_ld_imm16_a || is_ld_rr_imm) next_state = FETCH_IMM16_LO;
             else if (is_ld_r_imm) next_state = FETCH_IMM;
             else if (is_ld_hl_imm) next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
@@ -157,6 +167,9 @@ module cpu (
       o_mem_wr_en <= 1'b0;
       o_mem_wr_data <= 8'h0;
       reg_wr_en <= 1'b0;
+      bc_wr_en <= 1'b0;
+      de_wr_en <= 1'b0;
+      hl_wr_en <= 1'b0;
       state <= next_state;
       m_cycle <= next_m_cycle;
       t_state <= next_t_state;
@@ -191,6 +204,7 @@ module cpu (
             is_ld_a_imm16 <= 1'b0;
             is_ldh_c_a <= 1'b0;
             is_ldh_a_c <= 1'b0;
+            is_ld_rr_imm <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -212,6 +226,7 @@ module cpu (
               8'hFA: is_ld_a_imm16 <= 1'b1;
               8'hE2: is_ldh_c_a <= 1'b1;
               8'hF2: is_ldh_a_c <= 1'b1;
+              8'h01, 8'h11, 8'h21, 8'h31: is_ld_rr_imm <= 1'b1;
 
               default: ;
             endcase
@@ -437,6 +452,15 @@ module cpu (
               reg_wr_sel <= 3'd7;
               o_mem_rd_addr <= 16'hFF00 + {8'b0, reg_b};
             end
+          end else if (is_ld_rr_imm) begin
+            case (ir)
+              8'h01: bc_wr_data <= imm16;
+              8'h11: de_wr_data <= imm16;
+              8'h21: hl_wr_data <= imm16;
+              8'h31: sp <= imm16;
+
+              default: ;
+            endcase
           end
         end
 
@@ -513,6 +537,16 @@ module cpu (
             if (m_cycle == 1 && t_state == 0) begin
               reg_wr_en   <= 1'b1;
               reg_wr_data <= i_mem_rd_data;
+            end
+          end else if (is_ld_rr_imm) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              case (ir)
+                8'h01: bc_wr_en <= 1;
+                8'h11: de_wr_en <= 1;
+                8'h21: hl_wr_en <= 1;
+
+                default: ;
+              endcase
             end
           end
         end
