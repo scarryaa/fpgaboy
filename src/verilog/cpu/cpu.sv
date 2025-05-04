@@ -75,6 +75,8 @@ module cpu (
   logic is_ldh_a_imm;
   logic is_ld_imm16_a;
   logic is_ld_a_imm16;
+  logic is_ldh_c_a;
+  logic is_ldh_a_c;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -86,6 +88,7 @@ module cpu (
       8'h22, 8'h32, 8'h2A, 8'h3A: get_m_cycles = 2;
       8'hE0, 8'hF0: get_m_cycles = 3;
       8'hEA, 8'hFA: get_m_cycles = 4;
+      8'hE2, 8'hF2: get_m_cycles = 2;
 
       default: get_m_cycles = 1;
     endcase
@@ -186,6 +189,8 @@ module cpu (
             is_ldh_a_imm <= 1'b0;
             is_ld_imm16_a <= 1'b0;
             is_ld_a_imm16 <= 1'b0;
+            is_ldh_c_a <= 1'b0;
+            is_ldh_a_c <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -205,6 +210,8 @@ module cpu (
               8'hF0: is_ldh_a_imm <= 1'b1;
               8'hEA: is_ld_imm16_a <= 1'b1;
               8'hFA: is_ld_a_imm16 <= 1'b1;
+              8'hE2: is_ldh_c_a <= 1'b1;
+              8'hF2: is_ldh_a_c <= 1'b1;
 
               default: ;
             endcase
@@ -412,6 +419,24 @@ module cpu (
               reg_wr_sel <= 3'd7;
               o_mem_rd_addr <= imm16;
             end
+          end else if (is_ldh_c_a) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_b_sel <= 3'd1;
+            end
+
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_a_sel <= 3'd7;
+              o_mem_wr_addr <= 16'hFF00 + {8'b0, reg_b};
+            end
+          end else if (is_ldh_a_c) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_b_sel <= 3'd1;
+            end
+
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_wr_sel <= 3'd7;
+              o_mem_rd_addr <= 16'hFF00 + {8'b0, reg_b};
+            end
           end
         end
 
@@ -478,6 +503,16 @@ module cpu (
             if (m_cycle == 3 && t_state == 0) begin
               reg_wr_data <= i_mem_rd_data;
               reg_wr_en   <= 1'b1;
+            end
+          end else if (is_ldh_c_a) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              o_mem_wr_data <= reg_a;
+              o_mem_wr_en   <= 1'b1;
+            end
+          end else if (is_ldh_a_c) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_wr_en   <= 1'b1;
+              reg_wr_data <= i_mem_rd_data;
             end
           end
         end
