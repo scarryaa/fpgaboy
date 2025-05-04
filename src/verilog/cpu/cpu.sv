@@ -14,7 +14,9 @@ module cpu (
   logic [2:0] reg_c_sel;
   logic [2:0] reg_wr_sel;
   logic reg_wr_en;
+  logic hl_wr_en;
   logic [7:0] reg_wr_data;
+  logic [15:0] hl_wr_data;
   logic [7:0] reg_a;
   logic [7:0] reg_b;
   logic [7:0] reg_c;
@@ -28,7 +30,9 @@ module cpu (
       .i_reg_c_sel(reg_c_sel),
       .i_reg_wr_sel(reg_wr_sel),
       .i_reg_wr_en(reg_wr_en),
+      .i_hl_wr_en(hl_wr_en),
       .i_reg_wr_data(reg_wr_data),
+      .i_hl_wr_data(hl_wr_data),
       .o_reg_a(reg_a),
       .o_reg_b(reg_b),
       .o_reg_c(reg_c)
@@ -60,6 +64,8 @@ module cpu (
   logic is_ld_hl_r;
   logic is_ld_rr_a;
   logic is_ld_r_rr;
+  logic is_ld_hl_a_inc_dec;
+  logic is_ld_a_hl_inc_dec;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -68,6 +74,7 @@ module cpu (
       8'h46, 8'h4E, 8'h56, 8'h5E, 8'h66, 8'h6E, 8'h7E: get_m_cycles = 2;
       8'h70, 8'h71, 8'h72, 8'h73, 8'h74, 8'h75, 8'h77: get_m_cycles = 2;
       8'h02, 8'h12, 8'h0A, 8'h1A: get_m_cycles = 2;
+      8'h22, 8'h32, 8'h2A, 8'h3A: get_m_cycles = 2;
 
       default: get_m_cycles = 1;
     endcase
@@ -156,6 +163,8 @@ module cpu (
             is_ld_hl_r <= 1'b0;
             is_ld_rr_a <= 1'b0;
             is_ld_r_rr <= 1'b0;
+            is_ld_hl_a_inc_dec <= 1'b0;
+            is_ld_a_hl_inc_dec <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -169,6 +178,8 @@ module cpu (
               8'h70, 8'h71, 8'h72, 8'h73, 8'h74, 8'h75, 8'h77: is_ld_hl_r <= 1'b1;
               8'h02, 8'h12: is_ld_rr_a <= 1'b1;
               8'h0A, 8'h1A: is_ld_r_rr <= 1'b1;
+              8'h22, 8'h32: is_ld_hl_a_inc_dec <= 1'b1;
+              8'h2A, 8'h3A: is_ld_a_hl_inc_dec <= 1'b1;
 
               default: ;
             endcase
@@ -300,6 +311,43 @@ module cpu (
             if (m_cycle == 1 && t_state == 0) begin
               o_mem_rd_addr <= {reg_a, reg_b};
             end
+          end else if (is_ld_hl_a_inc_dec) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              case (ir)
+                8'h22: begin
+                  if (m_cycle == 0 && t_state == 0) begin
+                    reg_a_sel <= 3'd4;
+                    reg_b_sel <= 3'd5;
+                    reg_c_sel <= 3'd7;
+                  end
+                end
+
+                8'h32: begin
+                  if (m_cycle == 0 && t_state == 0) begin
+                    reg_a_sel <= 3'd4;
+                    reg_b_sel <= 3'd5;
+                    reg_c_sel <= 3'd7;
+                  end
+                end
+
+                default: ;
+              endcase
+            end
+
+            if (m_cycle == 1 && t_state == 0) begin
+              o_mem_wr_addr <= {reg_a, reg_b};
+              reg_c_val <= reg_c;
+            end
+          end else if (is_ld_a_hl_inc_dec) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_wr_sel <= 3'd7;
+              reg_a_sel  <= 3'd4;
+              reg_b_sel  <= 3'd5;
+            end
+
+            if (m_cycle == 1 && t_state == 0) begin
+              o_mem_rd_addr <= {reg_a, reg_b};
+            end
           end
         end
 
@@ -325,6 +373,28 @@ module cpu (
           end else if (is_ld_r_rr) begin
             reg_wr_data <= i_mem_rd_data;
             reg_wr_en   <= 1'b1;
+          end else if (is_ld_hl_a_inc_dec) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              o_mem_wr_data <= reg_c_val;
+              o_mem_wr_en   <= 1'b1;
+
+              if (ir == 8'h22) begin
+                hl_wr_en   <= 1'b1;
+                hl_wr_data <= {reg_a, reg_b} + 16'd1;
+              end else if (ir == 8'h32) begin
+                hl_wr_en   <= 1'b1;
+                hl_wr_data <= {reg_a, reg_b} - 16'd1;
+              end
+            end
+          end else if (is_ld_a_hl_inc_dec) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_wr_en   <= 1'b1;
+              reg_wr_data <= i_mem_rd_data;
+
+              hl_wr_en    <= 1'b1;
+              if (ir == 8'h2A) hl_wr_data <= {reg_a, reg_b} + 16'd1;
+              else if (ir == 8'h3A) hl_wr_data <= {reg_a, reg_b} - 16'd1;
+            end
           end
         end
 
