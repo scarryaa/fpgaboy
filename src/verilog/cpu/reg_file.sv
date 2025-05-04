@@ -4,11 +4,13 @@ module reg_file (
 
     input logic [2:0] i_reg_a_sel,
     input logic [2:0] i_reg_b_sel,
+    input logic [2:0] i_reg_c_sel,
     input logic [2:0] i_reg_wr_sel,
     input logic i_reg_wr_en,
     input logic [7:0] i_reg_wr_data,
     output logic [7:0] o_reg_a,
-    output logic [7:0] o_reg_b
+    output logic [7:0] o_reg_b,
+    output logic [7:0] o_reg_c
 );
 
   reg [7:0] registers[7:0];
@@ -28,6 +30,7 @@ module reg_file (
   always_comb begin
     o_reg_a = registers[i_reg_a_sel];
     o_reg_b = registers[i_reg_b_sel];
+    o_reg_c = registers[i_reg_c_sel];
   end
 
 endmodule
