@@ -66,6 +66,8 @@ module cpu (
   logic is_ld_r_rr;
   logic is_ld_hl_a_inc_dec;
   logic is_ld_a_hl_inc_dec;
+  logic is_ldh_imm_a;
+  logic is_ldh_a_imm;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -75,6 +77,7 @@ module cpu (
       8'h70, 8'h71, 8'h72, 8'h73, 8'h74, 8'h75, 8'h77: get_m_cycles = 2;
       8'h02, 8'h12, 8'h0A, 8'h1A: get_m_cycles = 2;
       8'h22, 8'h32, 8'h2A, 8'h3A: get_m_cycles = 2;
+      8'hE0, 8'hF0: get_m_cycles = 3;
 
       default: get_m_cycles = 1;
     endcase
@@ -105,6 +108,8 @@ module cpu (
           DECODE: begin
             if (is_ld_r_imm) next_state = FETCH_IMM;
             else if (is_ld_hl_imm) next_state = FETCH_IMM;
+            else if (is_ldh_imm_a) next_state = FETCH_IMM;
+            else if (is_ldh_a_imm) next_state = FETCH_IMM;
             else next_state = EXECUTE;
           end
           FETCH_IMM: next_state = LATCH_IMM;
@@ -165,6 +170,8 @@ module cpu (
             is_ld_r_rr <= 1'b0;
             is_ld_hl_a_inc_dec <= 1'b0;
             is_ld_a_hl_inc_dec <= 1'b0;
+            is_ldh_imm_a <= 1'b0;
+            is_ldh_a_imm <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -180,6 +187,8 @@ module cpu (
               8'h0A, 8'h1A: is_ld_r_rr <= 1'b1;
               8'h22, 8'h32: is_ld_hl_a_inc_dec <= 1'b1;
               8'h2A, 8'h3A: is_ld_a_hl_inc_dec <= 1'b1;
+              8'hE0: is_ldh_imm_a <= 1'b1;
+              8'hF0: is_ldh_a_imm <= 1'b1;
 
               default: ;
             endcase
@@ -348,6 +357,16 @@ module cpu (
             if (m_cycle == 1 && t_state == 0) begin
               o_mem_rd_addr <= {reg_a, reg_b};
             end
+          end else if (is_ldh_imm_a) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              reg_a_sel <= 3'd7;
+              o_mem_wr_addr <= 16'hFF00 + {8'b0, imm};
+            end
+          end else if (is_ldh_a_imm) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              reg_wr_sel <= 3'd7;
+              o_mem_rd_addr <= 16'hFF00 + {8'b0, imm};
+            end
           end
         end
 
@@ -394,6 +413,16 @@ module cpu (
               hl_wr_en    <= 1'b1;
               if (ir == 8'h2A) hl_wr_data <= {reg_a, reg_b} + 16'd1;
               else if (ir == 8'h3A) hl_wr_data <= {reg_a, reg_b} - 16'd1;
+            end
+          end else if (is_ldh_imm_a) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              o_mem_wr_data <= reg_a;
+              o_mem_wr_en   <= 1'b1;
+            end
+          end else if (is_ldh_a_imm) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              reg_wr_en   <= 1'b1;
+              reg_wr_data <= i_mem_rd_data;
             end
           end
         end
