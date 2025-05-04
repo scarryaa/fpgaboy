@@ -38,10 +38,13 @@ module cpu (
       .o_reg_c(reg_c)
   );
 
-  typedef enum logic [2:0] {
+  typedef enum logic [3:0] {
     FETCH,
     FETCH_IMM,
     LATCH_IMM,
+    FETCH_IMM16_LO,
+    FETCH_IMM16_HI,
+    LATCH_IMM16,
     DECODE,
     EXECUTE,
     WRITEBACK
@@ -55,6 +58,8 @@ module cpu (
   logic [2:0] t_state, next_t_state;
   logic [2:0] M_CYCLE_MAX, T_STATE_MAX;
   logic [7:0] imm;
+  logic [15:0] imm16;
+  logic [7:0] imm16_lo;
   logic [7:0] reg_c_val;
 
   logic is_ld_r_r;
@@ -68,6 +73,8 @@ module cpu (
   logic is_ld_a_hl_inc_dec;
   logic is_ldh_imm_a;
   logic is_ldh_a_imm;
+  logic is_ld_imm16_a;
+  logic is_ld_a_imm16;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -78,6 +85,7 @@ module cpu (
       8'h02, 8'h12, 8'h0A, 8'h1A: get_m_cycles = 2;
       8'h22, 8'h32, 8'h2A, 8'h3A: get_m_cycles = 2;
       8'hE0, 8'hF0: get_m_cycles = 3;
+      8'hEA, 8'hFA: get_m_cycles = 4;
 
       default: get_m_cycles = 1;
     endcase
@@ -104,18 +112,22 @@ module cpu (
         next_m_cycle = 0;
 
         case (state)
-          FETCH:     next_state = DECODE;
+          FETCH:          next_state = DECODE;
           DECODE: begin
-            if (is_ld_r_imm) next_state = FETCH_IMM;
+            if (is_ld_a_imm16 || is_ld_imm16_a) next_state = FETCH_IMM16_LO;
+            else if (is_ld_r_imm) next_state = FETCH_IMM;
             else if (is_ld_hl_imm) next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
             else if (is_ldh_a_imm) next_state = FETCH_IMM;
             else next_state = EXECUTE;
           end
-          FETCH_IMM: next_state = LATCH_IMM;
-          LATCH_IMM: next_state = EXECUTE;
-          EXECUTE:   next_state = WRITEBACK;
-          WRITEBACK: next_state = FETCH;
+          FETCH_IMM:      next_state = LATCH_IMM;
+          LATCH_IMM:      next_state = EXECUTE;
+          FETCH_IMM16_LO: next_state = FETCH_IMM16_HI;
+          FETCH_IMM16_HI: next_state = LATCH_IMM16;
+          LATCH_IMM16:    next_state = EXECUTE;
+          EXECUTE:        next_state = WRITEBACK;
+          WRITEBACK:      next_state = FETCH;
 
           default: next_state = FETCH;
         endcase
@@ -172,6 +184,8 @@ module cpu (
             is_ld_a_hl_inc_dec <= 1'b0;
             is_ldh_imm_a <= 1'b0;
             is_ldh_a_imm <= 1'b0;
+            is_ld_imm16_a <= 1'b0;
+            is_ld_a_imm16 <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -189,6 +203,8 @@ module cpu (
               8'h2A, 8'h3A: is_ld_a_hl_inc_dec <= 1'b1;
               8'hE0: is_ldh_imm_a <= 1'b1;
               8'hF0: is_ldh_a_imm <= 1'b1;
+              8'hEA: is_ld_imm16_a <= 1'b1;
+              8'hFA: is_ld_a_imm16 <= 1'b1;
 
               default: ;
             endcase
@@ -207,6 +223,25 @@ module cpu (
           if (m_cycle == 0 && t_state == 0) begin
             imm <= i_mem_rd_data;
           end
+        end
+
+        FETCH_IMM16_LO: begin
+          if (m_cycle == 0 && t_state == 0) o_mem_rd_addr <= pc;
+          else if (m_cycle == 0 && t_state == T_STATE_MAX) begin
+            pc <= pc + 1;
+            imm16_lo <= i_mem_rd_data;
+          end
+        end
+
+        FETCH_IMM16_HI: begin
+          if (m_cycle == 0 && t_state == 0) o_mem_rd_addr <= pc;
+          else if (m_cycle == 0 && t_state == T_STATE_MAX) begin
+            pc <= pc + 1;
+          end
+        end
+
+        LATCH_IMM16: begin
+          if (m_cycle == 0 && t_state == 0) imm16 <= {i_mem_rd_data, imm16_lo};
         end
 
         EXECUTE: begin
@@ -367,6 +402,16 @@ module cpu (
               reg_wr_sel <= 3'd7;
               o_mem_rd_addr <= 16'hFF00 + {8'b0, imm};
             end
+          end else if (is_ld_imm16_a) begin
+            if (m_cycle == 3 && t_state == 0) begin
+              o_mem_wr_addr <= imm16;
+              reg_a_sel <= 3'd7;
+            end
+          end else if (is_ld_a_imm16) begin
+            if (m_cycle == 3 && t_state == 0) begin
+              reg_wr_sel <= 3'd7;
+              o_mem_rd_addr <= imm16;
+            end
           end
         end
 
@@ -423,6 +468,16 @@ module cpu (
             if (m_cycle == 2 && t_state == 0) begin
               reg_wr_en   <= 1'b1;
               reg_wr_data <= i_mem_rd_data;
+            end
+          end else if (is_ld_imm16_a) begin
+            if (m_cycle == 3 && t_state == 0) begin
+              o_mem_wr_data <= reg_a;
+              o_mem_wr_en   <= 1'b1;
+            end
+          end else if (is_ld_a_imm16) begin
+            if (m_cycle == 3 && t_state == 0) begin
+              reg_wr_data <= i_mem_rd_data;
+              reg_wr_en   <= 1'b1;
             end
           end
         end
