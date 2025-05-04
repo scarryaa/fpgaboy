@@ -51,13 +51,15 @@ module cpu (
   logic [2:0] t_state, next_t_state;
   logic [2:0] M_CYCLE_MAX, T_STATE_MAX;
   logic [7:0] imm;
-  logic [7:0] reg_r_val;
+  logic [7:0] reg_c_val;
 
   logic is_ld_r_r;
   logic is_ld_r_imm;
   logic is_ld_r_hl;
   logic is_ld_hl_imm;
   logic is_ld_hl_r;
+  logic is_ld_rr_a;
+  logic is_ld_r_rr;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -65,6 +67,7 @@ module cpu (
       8'h36: get_m_cycles = 3;
       8'h46, 8'h4E, 8'h56, 8'h5E, 8'h66, 8'h6E, 8'h7E: get_m_cycles = 2;
       8'h70, 8'h71, 8'h72, 8'h73, 8'h74, 8'h75, 8'h77: get_m_cycles = 2;
+      8'h02, 8'h12, 8'h0A, 8'h1A: get_m_cycles = 2;
 
       default: get_m_cycles = 1;
     endcase
@@ -151,6 +154,8 @@ module cpu (
             is_ld_hl_imm <= 1'b0;
             is_ld_r_hl <= 1'b0;
             is_ld_hl_r <= 1'b0;
+            is_ld_rr_a <= 1'b0;
+            is_ld_r_rr <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -162,6 +167,8 @@ module cpu (
               8'h46, 8'h56, 8'h66, 8'h4E, 8'h5E, 8'h6E, 8'h7E: is_ld_r_hl <= 1'b1;
               8'h36: is_ld_hl_imm <= 1'b1;
               8'h70, 8'h71, 8'h72, 8'h73, 8'h74, 8'h75, 8'h77: is_ld_hl_r <= 1'b1;
+              8'h02, 8'h12: is_ld_rr_a <= 1'b1;
+              8'h0A, 8'h1A: is_ld_r_rr <= 1'b1;
 
               default: ;
             endcase
@@ -242,9 +249,56 @@ module cpu (
                 default: reg_c_sel <= 3'd0;
               endcase
             end
+
             if (m_cycle == 1 && t_state == 0) begin
               o_mem_wr_addr <= {reg_a, reg_b};
-              reg_r_val <= reg_c;
+              reg_c_val <= reg_c;
+            end
+          end else if (is_ld_rr_a) begin
+            case (ir)
+              8'h02: begin
+                if (m_cycle == 0 && t_state == 0) begin
+                  reg_a_sel <= 3'd0;
+                  reg_b_sel <= 3'd1;
+                  reg_c_sel <= 3'd7;
+                end
+              end
+
+              8'h12: begin
+                if (m_cycle == 0 && t_state == 0) begin
+                  reg_a_sel <= 3'd2;
+                  reg_b_sel <= 3'd3;
+                  reg_c_sel <= 3'd7;
+                end
+              end
+              default: ;
+            endcase
+
+            if (m_cycle == 1 && t_state == 0) begin
+              o_mem_wr_addr <= {reg_a, reg_b};
+              reg_c_val <= reg_c;
+            end
+          end else if (is_ld_r_rr) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_wr_sel <= 3'd7;
+
+              case (ir)
+                8'h0A: begin
+                  reg_a_sel <= 3'd0;
+                  reg_b_sel <= 3'd1;
+                end
+
+                8'h1A: begin
+                  reg_a_sel <= 3'd2;
+                  reg_b_sel <= 3'd3;
+                end
+
+                default: ;
+              endcase
+            end
+
+            if (m_cycle == 1 && t_state == 0) begin
+              o_mem_rd_addr <= {reg_a, reg_b};
             end
           end
         end
@@ -263,8 +317,14 @@ module cpu (
             o_mem_wr_en   <= 1'b1;
             o_mem_wr_data <= imm;
           end else if (is_ld_hl_r) begin
-            o_mem_wr_data <= reg_r_val;
+            o_mem_wr_data <= reg_c_val;
             o_mem_wr_en   <= 1'b1;
+          end else if (is_ld_rr_a) begin
+            o_mem_wr_data <= reg_c_val;
+            o_mem_wr_en   <= 1'b1;
+          end else if (is_ld_r_rr) begin
+            reg_wr_data <= i_mem_rd_data;
+            reg_wr_en   <= 1'b1;
           end
         end
 
