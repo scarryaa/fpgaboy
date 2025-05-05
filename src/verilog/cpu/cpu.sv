@@ -86,6 +86,7 @@ module cpu (
   logic is_ldh_c_a;
   logic is_ldh_a_c;
   logic is_ld_rr_imm;
+  logic is_inc_rr;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -99,6 +100,7 @@ module cpu (
       8'hEA, 8'hFA: get_m_cycles = 4;
       8'hE2, 8'hF2: get_m_cycles = 2;
       8'h01, 8'h11, 8'h21, 8'h31: get_m_cycles = 3;
+      8'h03, 8'h13, 8'h23, 8'h33: get_m_cycles = 2;
 
       default: get_m_cycles = 1;
     endcase
@@ -205,6 +207,7 @@ module cpu (
             is_ldh_c_a <= 1'b0;
             is_ldh_a_c <= 1'b0;
             is_ld_rr_imm <= 1'b0;
+            is_inc_rr <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -227,6 +230,7 @@ module cpu (
               8'hE2: is_ldh_c_a <= 1'b1;
               8'hF2: is_ldh_a_c <= 1'b1;
               8'h01, 8'h11, 8'h21, 8'h31: is_ld_rr_imm <= 1'b1;
+              8'h03, 8'h13, 8'h23, 8'h33: is_inc_rr <= 1'b1;
 
               default: ;
             endcase
@@ -461,6 +465,29 @@ module cpu (
 
               default: ;
             endcase
+          end else if (is_inc_rr) begin
+            case (ir)
+              8'h03: begin
+                reg_a_sel  <= 3'd0;
+                reg_b_sel  <= 3'd1;
+                bc_wr_data <= {reg_a, reg_b} + 1;
+              end
+              8'h13: begin
+                reg_a_sel  <= 3'd2;
+                reg_b_sel  <= 3'd3;
+                de_wr_data <= {reg_a, reg_b} + 1;
+              end
+              8'h23: begin
+                reg_a_sel  <= 3'd4;
+                reg_b_sel  <= 3'd5;
+                hl_wr_data <= {reg_a, reg_b} + 1;
+              end
+              8'h33: begin
+                // No setup needed
+              end
+
+              default: ;
+            endcase
           end
         end
 
@@ -548,6 +575,23 @@ module cpu (
                 default: ;
               endcase
             end
+          end else if (is_inc_rr) begin
+            case (ir)
+              8'h03: begin
+                bc_wr_en <= 1'b1;
+              end
+              8'h13: begin
+                de_wr_en <= 1'b1;
+              end
+              8'h23: begin
+                hl_wr_en <= 1'b1;
+              end
+              8'h33: begin
+                sp <= sp + 1;
+              end
+
+              default: ;
+            endcase
           end
         end
 
