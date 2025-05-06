@@ -133,6 +133,10 @@ module cpu (
   logic is_ccf;
   logic is_cpl;
   logic is_daa;
+  logic is_rlca;
+  logic is_rla;
+  logic is_rrca;
+  logic is_rra;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -313,6 +317,10 @@ module cpu (
             is_ccf <= 1'b0;
             is_cpl <= 1'b0;
             is_daa <= 1'b0;
+            is_rlca <= 1'b0;
+            is_rla <= 1'b0;
+            is_rrca <= 1'b0;
+            is_rra <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -379,6 +387,10 @@ module cpu (
               8'h3F: is_ccf <= 1'b1;
               8'h2F: is_cpl <= 1'b1;
               8'h27: is_daa <= 1'b1;
+              8'h07: is_rlca <= 1'b1;
+              8'h17: is_rla <= 1'b1;
+              8'h0F: is_rrca <= 1'b1;
+              8'h1F: is_rra <= 1'b1;
 
               default: ;
             endcase
@@ -1065,6 +1077,42 @@ module cpu (
               f[5]   = 1'b0;
               f[4]   = c_new;
               f[3:0] = 4'b0000;
+            end
+          end else if (is_rlca) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_a  <= {reg_a[6:0], reg_a[7]};
+              f[7]   <= 1'b0;
+              f[6]   <= 1'b0;
+              f[5]   <= 1'b0;
+              f[4]   <= reg_a[7];
+              f[3:0] <= 4'b0000;
+            end
+          end else if (is_rla) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_a  <= {reg_a[6:0], f[4]};
+              f[7]   <= 1'b0;
+              f[6]   <= 1'b0;
+              f[5]   <= 1'b0;
+              f[4]   <= reg_a[7];
+              f[3:0] <= 4'b0000;
+            end
+          end else if (is_rrca) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_a  <= {reg_a[0], reg_a[7:1]};
+              f[7]   <= 1'b0;
+              f[6]   <= 1'b0;
+              f[5]   <= 1'b0;
+              f[4]   <= reg_a[0];
+              f[3:0] <= 4'b0000;
+            end
+          end else if (is_rra) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_a  <= {f[4], reg_a[7:1]};
+              f[7]   <= 1'b0;
+              f[6]   <= 1'b0;
+              f[5]   <= 1'b0;
+              f[4]   <= reg_a[0];
+              f[3:0] <= 4'b0000;
             end
           end else if (is_jr_e8) begin
             if (m_cycle == 2 && t_state == 0) begin
