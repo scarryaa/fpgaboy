@@ -100,6 +100,7 @@ module cpu (
   logic is_ld_sp_hl;
   logic is_ld_hl_sp_e8;
   logic is_add_sp_e8;
+  logic is_add_r_r;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -241,6 +242,7 @@ module cpu (
             is_ld_sp_hl <= 1'b0;
             is_ld_hl_sp_e8 <= 1'b0;
             is_add_sp_e8 <= 1'b0;
+            is_add_r_r <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -274,6 +276,7 @@ module cpu (
               8'hF8: is_ld_hl_sp_e8 <= 1'b1;
               8'hF9: is_ld_sp_hl <= 1'b1;
               8'hE8: is_add_sp_e8 <= 1'b1;
+              8'h80, 8'h81, 8'h82, 8'h83, 8'h84, 8'h85, 8'h87: is_add_r_r <= 1'b1;
 
               default: ;
             endcase
@@ -679,6 +682,21 @@ module cpu (
             end
           end else if (is_ld_hl_sp_e8) begin
             temp_hl <= sp + {{8{imm[7]}}, imm};
+          end else if (is_add_r_r) begin
+            reg_a_sel  <= 3'd7;
+            reg_wr_sel <= 3'd7;
+
+            case (ir)
+              8'h80: reg_b_sel <= 3'd0;
+              8'h81: reg_b_sel <= 3'd1;
+              8'h82: reg_b_sel <= 3'd2;
+              8'h83: reg_b_sel <= 3'd3;
+              8'h84: reg_b_sel <= 3'd4;
+              8'h85: reg_b_sel <= 3'd5;
+              8'h87: reg_b_sel <= 3'd7;
+
+              default: ;
+            endcase
           end
         end
 
@@ -934,6 +952,23 @@ module cpu (
               f[5]   = hc_sum[4];
               f[4]   = c_sum[8];
               f[3:0] = 4'b0000;
+            end
+          end else if (is_add_r_r) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              logic [7:0] sum8;
+              logic [8:0] sum9;
+
+              sum8   = reg_a + reg_b;
+              sum9   = {1'b0, reg_a} + {1'b0, reg_b};
+
+              f[7]   = (sum8 == 8'h00);
+              f[6]   = 1'b0;
+              f[5]   = (((reg_a & 8'h0F) + (reg_b & 8'h0F)) > 8'h0F);
+              f[4]   = sum9[8];
+              f[3:0] = 4'b0000;
+
+              reg_wr_data <= sum8;
+              reg_wr_en   <= 1'b1;
             end
           end
         end
