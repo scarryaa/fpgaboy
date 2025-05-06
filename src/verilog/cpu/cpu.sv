@@ -69,6 +69,7 @@ module cpu (
   logic [15:0] imm16;
   logic [7:0] imm16_lo;
   logic [7:0] reg_c_val;
+  logic [7:0] f;
 
   logic is_ld_r_r;
   logic is_ld_r_imm;
@@ -88,6 +89,10 @@ module cpu (
   logic is_ld_rr_imm;
   logic is_inc_rr;
   logic is_dec_rr;
+  logic is_inc_r;
+  logic is_dec_r;
+  logic is_inc_hl_mem;
+  logic is_dec_hl_mem;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -103,6 +108,9 @@ module cpu (
       8'h01, 8'h11, 8'h21, 8'h31: get_m_cycles = 3;
       8'h03, 8'h13, 8'h23, 8'h33: get_m_cycles = 2;
       8'h0B, 8'h1B, 8'h2B, 8'h3B: get_m_cycles = 2;
+      8'h04, 8'h14, 8'h24: get_m_cycles = 1;
+      8'h05, 8'h15, 8'h25: get_m_cycles = 1;
+      8'h34, 8'h35: get_m_cycles = 3;
 
       default: get_m_cycles = 1;
     endcase
@@ -235,6 +243,10 @@ module cpu (
               8'h01, 8'h11, 8'h21, 8'h31: is_ld_rr_imm <= 1'b1;
               8'h03, 8'h13, 8'h23, 8'h33: is_inc_rr <= 1'b1;
               8'h0B, 8'h1B, 8'h2B, 8'h3B: is_dec_rr <= 1'b1;
+              8'h04, 8'h14, 8'h24, 8'h0C, 8'h1C, 8'h2C, 8'h3C: is_inc_r = 1'b1;
+              8'h05, 8'h15, 8'h25, 8'h0D, 8'h1D, 8'h2D, 8'h3D: is_dec_r = 1'b1;
+              8'h34: is_inc_hl_mem = 1'b1;
+              8'h35: is_dec_hl_mem = 1'b1;
 
               default: ;
             endcase
@@ -515,6 +527,89 @@ module cpu (
 
               default: ;
             endcase
+          end else if (is_inc_r) begin
+            case (ir)
+              8'h04: begin
+                reg_wr_sel  <= 3'd0;
+                reg_a_sel   <= 3'd0;
+                reg_wr_data <= reg_a + 1;
+              end
+              8'h0C: begin
+                reg_wr_sel  <= 3'd1;
+                reg_a_sel   <= 3'd1;
+                reg_wr_data <= reg_a + 1;
+              end
+              8'h14: begin
+                reg_wr_sel  <= 3'd2;
+                reg_a_sel   <= 3'd2;
+                reg_wr_data <= reg_a + 1;
+              end
+              8'h1C: begin
+                reg_wr_sel  <= 3'd3;
+                reg_a_sel   <= 3'd3;
+                reg_wr_data <= reg_a + 1;
+              end
+              8'h24: begin
+                reg_wr_sel  <= 3'd4;
+                reg_a_sel   <= 3'd4;
+                reg_wr_data <= reg_a + 1;
+              end
+              8'h2C: begin
+                reg_wr_sel  <= 3'd5;
+                reg_a_sel   <= 3'd5;
+                reg_wr_data <= reg_a + 1;
+              end
+              8'h3C: begin
+                reg_wr_sel  <= 3'd7;
+                reg_a_sel   <= 3'd7;
+                reg_wr_data <= reg_a + 1;
+              end
+
+              default: ;
+            endcase
+          end else if (is_dec_r) begin
+            case (ir)
+              8'h05: begin
+                reg_wr_sel  <= 3'd0;
+                reg_a_sel   <= 3'd0;
+                reg_wr_data <= reg_a - 1;
+              end
+              8'h0D: begin
+                reg_wr_sel  <= 3'd1;
+                reg_a_sel   <= 3'd1;
+                reg_wr_data <= reg_a - 1;
+              end
+              8'h15: begin
+                reg_wr_sel  <= 3'd2;
+                reg_a_sel   <= 3'd2;
+                reg_wr_data <= reg_a - 1;
+              end
+              8'h1D: begin
+                reg_wr_sel  <= 3'd3;
+                reg_a_sel   <= 3'd3;
+                reg_wr_data <= reg_a - 1;
+              end
+              8'h25: begin
+                reg_wr_sel  <= 3'd4;
+                reg_a_sel   <= 3'd4;
+                reg_wr_data <= reg_a - 1;
+              end
+              8'h2D: begin
+                reg_wr_sel  <= 3'd5;
+                reg_a_sel   <= 3'd5;
+                reg_wr_data <= reg_a - 1;
+              end
+              8'h3D: begin
+                reg_wr_sel  <= 3'd7;
+                reg_a_sel   <= 3'd7;
+                reg_wr_data <= reg_a - 1;
+              end
+
+              default: ;
+            endcase
+          end else
+          if (is_inc_hl_mem) begin
+          end else if (is_dec_hl_mem) begin
           end
         end
 
@@ -636,6 +731,22 @@ module cpu (
 
               default: ;
             endcase
+          end else if (is_inc_r) begin
+            reg_wr_en <= 1'b1;
+
+            f[7]   = (reg_wr_data == 8'h00);
+            f[6]   = 1'b0;
+            f[5]   = ((reg_a & 8'h0F) + 1 > 4'hF);
+            f[4]   = f[4];
+            f[3:0] = 4'b0000;
+          end else if (is_dec_r) begin
+            reg_wr_en <= 1'b1;
+
+            f[7]   = (reg_wr_data == 8'h00);
+            f[6]   = 1'b1;
+            f[5]   = ((reg_a & 8'h0F) == 8'h00);
+            f[4]   = f[4];
+            f[3:0] = 4'b0000;
           end
         end
 
