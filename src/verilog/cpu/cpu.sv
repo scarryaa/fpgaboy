@@ -104,6 +104,7 @@ module cpu (
   logic is_adc_r_r;
   logic is_sub_r_r;
   logic is_sbc_r_r;
+  logic is_and_a_r;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -249,6 +250,7 @@ module cpu (
             is_adc_r_r <= 1'b0;
             is_sub_r_r <= 1'b0;
             is_sbc_r_r <= 1'b0;
+            is_and_a_r <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -286,6 +288,7 @@ module cpu (
               8'h88, 8'h89, 8'h8A, 8'h8B, 8'h8C, 8'h8D, 8'h8F: is_adc_r_r <= 1'b1;
               8'h90, 8'h91, 8'h92, 8'h93, 8'h94, 8'h95, 8'h97: is_sub_r_r <= 1'b1;
               8'h98, 8'h99, 8'h9A, 8'h9B, 8'h9C, 8'h9D, 8'h9F: is_sbc_r_r <= 1'b1;
+              8'hA0, 8'hA1, 8'hA2, 8'hA3, 8'hA4, 8'hA5, 8'hA7: is_and_a_r <= 1'b1;
 
               default: ;
             endcase
@@ -751,6 +754,21 @@ module cpu (
 
               default: ;
             endcase
+          end else if (is_and_a_r) begin
+            reg_a_sel  <= 3'd7;
+            reg_wr_sel <= 3'd7;
+
+            case (ir)
+              8'hA0: reg_b_sel <= 3'd0;
+              8'hA1: reg_b_sel <= 3'd1;
+              8'hA2: reg_b_sel <= 3'd2;
+              8'hA3: reg_b_sel <= 3'd3;
+              8'hA4: reg_b_sel <= 3'd4;
+              8'hA5: reg_b_sel <= 3'd5;
+              8'hA7: reg_b_sel <= 3'd7;
+
+              default: ;
+            endcase
           end
         end
 
@@ -1075,6 +1093,18 @@ module cpu (
               f[3:0] = 4'b0000;
 
               reg_wr_data <= diff8;
+              reg_wr_en   <= 1'b1;
+            end
+          end else if (is_and_a_r) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              logic [7:0] and_result = reg_a & reg_b;
+              f[7]   = (and_result == 8'h00);
+              f[6]   = 1'b0;
+              f[5]   = 1'b1;
+              f[4]   = 1'b0;
+              f[3:0] = 4'b0000;
+
+              reg_wr_data <= and_result;
               reg_wr_en   <= 1'b1;
             end
           end
