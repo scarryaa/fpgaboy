@@ -99,6 +99,7 @@ module cpu (
   logic is_add_hl_rr;
   logic is_ld_sp_hl;
   logic is_ld_hl_sp_e8;
+  logic is_add_sp_e8;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -121,6 +122,7 @@ module cpu (
       8'h09, 8'h19, 8'h29, 8'h39: get_m_cycles = 2;
       8'hF9: get_m_cycles = 2;
       8'hF8: get_m_cycles = 3;
+      8'hE8: get_m_cycles = 4;
 
       default: get_m_cycles = 1;
     endcase
@@ -150,7 +152,7 @@ module cpu (
           FETCH:          next_state = DECODE;
           DECODE: begin
             if (is_ld_a_imm16 || is_ld_imm16_a || is_ld_rr_imm) next_state = FETCH_IMM16_LO;
-            else if (is_ld_r_imm || is_ld_hl_sp_e8) next_state = FETCH_IMM;
+            else if (is_ld_r_imm || is_ld_hl_sp_e8 || is_add_sp_e8) next_state = FETCH_IMM;
             else if (is_ld_hl_imm) next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
             else if (is_ldh_a_imm) next_state = FETCH_IMM;
@@ -238,6 +240,7 @@ module cpu (
             is_add_hl_rr <= 1'b0;
             is_ld_sp_hl <= 1'b0;
             is_ld_hl_sp_e8 <= 1'b0;
+            is_add_sp_e8 <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -270,6 +273,7 @@ module cpu (
               8'h09, 8'h19, 8'h29, 8'h39: is_add_hl_rr <= 1'b1;
               8'hF8: is_ld_hl_sp_e8 <= 1'b1;
               8'hF9: is_ld_sp_hl <= 1'b1;
+              8'hE8: is_add_sp_e8 <= 1'b1;
 
               default: ;
             endcase
@@ -914,6 +918,23 @@ module cpu (
             f[5]   = hc_sum[4];
             f[4]   = c_sum[8];
             f[3:0] = 4'b0000;
+          end else if (is_add_sp_e8) begin
+            if (m_cycle == 3 && t_state == 0) begin
+              logic [15:0] imm_se;
+              logic [ 4:0] hc_sum;
+              logic [ 8:0] c_sum;
+              imm_se = {{8{imm[7]}}, imm};
+              hc_sum = sp[3:0] + imm[3:0];
+              c_sum  = sp[7:0] + imm[7:0];
+
+              sp <= sp + imm_se;
+
+              f[7]   = 1'b0;
+              f[6]   = 1'b0;
+              f[5]   = hc_sum[4];
+              f[4]   = c_sum[8];
+              f[3:0] = 4'b0000;
+            end
           end
         end
 
