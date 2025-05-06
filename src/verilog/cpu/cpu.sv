@@ -130,6 +130,9 @@ module cpu (
   logic is_jr_z_e8;
   logic is_jr_c_e8;
   logic is_scf;
+  logic is_ccf;
+  logic is_cpl;
+  logic is_daa;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -157,7 +160,6 @@ module cpu (
       8'h8E, 8'h9E, 8'hAE, 8'hBE, 8'hCE, 8'hDE, 8'hEE, 8'hFE: get_m_cycles = 2;
       8'h20: get_m_cycles = 2;
       8'h30: get_m_cycles = 2;
-      8'h37: get_m_cycles = 1;
       8'h18: get_m_cycles = 3;
       8'h28: get_m_cycles = 2;
       8'h38: get_m_cycles = 2;
@@ -304,10 +306,13 @@ module cpu (
             is_cp_a_n8 <= 1'b0;
             is_jr_nz_e8 <= 1'b0;
             is_jr_nc_e8 <= 1'b0;
-            is_scf <= 1'b0;
             is_jr_e8 <= 1'b0;
             is_jr_z_e8 <= 1'b0;
             is_jr_c_e8 <= 1'b0;
+            is_scf <= 1'b0;
+            is_ccf <= 1'b0;
+            is_cpl <= 1'b0;
+            is_daa <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -367,10 +372,13 @@ module cpu (
               8'hFE: is_cp_a_n8 <= 1'b1;
               8'h20: is_jr_nz_e8 <= 1'b1;
               8'h30: is_jr_nc_e8 <= 1'b1;
-              8'h37: is_scf <= 1'b1;
               8'h18: is_jr_e8 <= 1'b1;
               8'h28: is_jr_z_e8 <= 1'b1;
               8'h38: is_jr_c_e8 <= 1'b1;
+              8'h37: is_scf <= 1'b1;
+              8'h3F: is_ccf <= 1'b1;
+              8'h2F: is_cpl <= 1'b1;
+              8'h27: is_daa <= 1'b1;
 
               default: ;
             endcase
@@ -1008,6 +1016,54 @@ module cpu (
               f[6]   = 1'b0;
               f[5]   = 1'b0;
               f[4]   = 1'b1;
+              f[3:0] = 4'b0000;
+            end
+          end else if (is_ccf) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              f[7]   = f[7];
+              f[6]   = 1'b0;
+              f[5]   = 1'b0;
+              f[4]   = ~f[4];
+              f[3:0] = 4'b0000;
+            end
+          end else if (is_cpl) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= ~reg_a;
+              reg_wr_en   <= 1'b1;
+
+              f[7]   = f[7];
+              f[6]   = 1'b1;
+              f[5]   = 1'b1;
+              f[4]   = f[4];
+              f[3:0] = 4'b0000;
+            end
+          end else if (is_daa) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg [7:0] a_new;
+              reg c_new;
+
+              a_new = reg_a;
+              c_new = f[4];
+
+              if (!f[6]) begin
+                if (f[5] || ((reg_a & 8'h0F) > 8'h09)) a_new = a_new + 8'h06;
+                if (f[4] || (reg_a > 8'h99)) begin
+                  a_new = a_new + 8'h60;
+                  c_new = 1'b1;
+                end
+              end else begin
+                if (f[5]) a_new = a_new - 8'h06;
+                if (f[4]) begin
+                  a_new = a_new - 8'h60;
+                  c_new = 1'b1;
+                end
+              end
+
+              reg_a  = a_new[7:0];
+              f[7]   = (a_new[7:0] == 8'h00);
+              f[5]   = 1'b0;
+              f[4]   = c_new;
               f[3:0] = 4'b0000;
             end
           end else if (is_jr_e8) begin
