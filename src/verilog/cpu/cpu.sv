@@ -120,6 +120,8 @@ module cpu (
   logic is_sub_a_n8;
   logic is_and_a_n8;
   logic is_or_a_n8;
+  logic is_adc_a_n8;
+  logic is_sbc_a_n8;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -174,7 +176,7 @@ module cpu (
           FETCH:          next_state = DECODE;
           DECODE: begin
             if (is_ld_a_imm16 || is_ld_imm16_a || is_ld_rr_imm) next_state = FETCH_IMM16_LO;
-            else if (is_ld_r_imm || is_ld_hl_sp_e8 || is_add_sp_e8 || is_add_a_n8 || is_sub_a_n8 || is_and_a_n8 || is_or_a_n8)
+            else if (is_ld_r_imm || is_ld_hl_sp_e8 || is_add_sp_e8 || is_add_a_n8 || is_sub_a_n8 || is_and_a_n8 || is_or_a_n8 || is_adc_a_n8 || is_sbc_a_n8)
               next_state = FETCH_IMM;
             else if (is_ld_hl_imm) next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
@@ -281,6 +283,8 @@ module cpu (
             is_sub_a_n8 <= 1'b0;
             is_and_a_n8 <= 1'b0;
             is_or_a_n8 <= 1'b0;
+            is_adc_a_n8 <= 1'b0;
+            is_sbc_a_n8 <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -334,6 +338,8 @@ module cpu (
               8'hD6: is_sub_a_n8 <= 1'b1;
               8'hE6: is_and_a_n8 <= 1'b1;
               8'hF6: is_or_a_n8 <= 1'b1;
+              8'hCE: is_adc_a_n8 <= 1'b1;
+              8'hDE: is_sbc_a_n8 <= 1'b1;
 
               default: ;
             endcase
@@ -931,6 +937,14 @@ module cpu (
             if (m_cycle == 1 && t_state == 0) begin
               reg_a_sel <= 3'd7;
             end
+          end else if (is_adc_a_n8) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_a_sel <= 3'd7;
+            end
+          end else if (is_sbc_a_n8) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_a_sel <= 3'd7;
+            end
           end
         end
 
@@ -1510,6 +1524,48 @@ module cpu (
 
               reg_wr_sel  <= 3'd7;
               reg_wr_data <= or8;
+              reg_wr_en   <= 1'b1;
+            end
+          end else if (is_adc_a_n8) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              logic [7:0] adc8;
+              logic [8:0] adc9;
+              logic carry_in;
+
+              carry_in = f[4];
+
+              adc8 = reg_a + imm + {7'b0, carry_in};
+              adc9 = {1'b0, reg_a} + {1'b0, imm} + {8'b0, carry_in};
+
+              f[7] = (adc8 == 8'h00);
+              f[6] = 1'b0;
+              f[5] = (((reg_a & 8'h0F) + (imm & 8'h0F) + {7'b0, carry_in}) > 8'h0F);
+              f[4] = adc9[8];
+              f[3:0] = 4'b0000;
+
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= adc8;
+              reg_wr_en   <= 1'b1;
+            end
+          end else if (is_sbc_a_n8) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              logic [7:0] sbc8;
+              logic [8:0] sbc9;
+              logic carry_in;
+
+              carry_in = f[4];
+
+              sbc8 = reg_a - imm - {7'b0, carry_in};
+              sbc9 = {1'b0, reg_a} - {1'b0, imm} - {8'b0, carry_in};
+
+              f[7] = (sbc8 == 8'h00);
+              f[6] = 1'b1;
+              f[5] = ((reg_a & 8'h0F) < ((imm & 8'h0F) + {7'b0, carry_in})) ? 1'b1 : 1'b0;
+              f[4] = sbc9[8];
+              f[3:0] = 4'b0000;
+
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= sbc8;
               reg_wr_en   <= 1'b1;
             end
           end
