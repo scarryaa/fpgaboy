@@ -76,6 +76,8 @@ module cpu (
   logic halted;
   logic [7:0] IE;
   logic [7:0] IF;
+  logic IME;
+  logic ei_pending;
 
   logic is_ld_r_r;
   logic is_ld_r_imm;
@@ -133,6 +135,12 @@ module cpu (
   logic is_jr_e8;
   logic is_jr_z_e8;
   logic is_jr_c_e8;
+  logic is_jp_nz_a16;
+  logic is_jp_nc_a16;
+  logic is_jp_a16;
+  logic is_jp_hl;
+  logic is_jp_z_a16;
+  logic is_jp_c_a16;
   logic is_scf;
   logic is_ccf;
   logic is_cpl;
@@ -143,6 +151,9 @@ module cpu (
   logic is_rra;
   logic is_stop_n8;
   logic is_halt;
+  logic is_ei;
+  logic is_di;
+  logic is_prefix;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -173,6 +184,8 @@ module cpu (
       8'h18: get_m_cycles = 3;
       8'h28: get_m_cycles = 2;
       8'h38: get_m_cycles = 2;
+      8'hC2, 8'hD2, 8'hCA, 8'hDA: get_m_cycles = 3;
+      8'hC3: get_m_cycles = 4;
 
       default: get_m_cycles = 1;
     endcase
@@ -200,6 +213,11 @@ module cpu (
 
         case (state)
           FETCH: begin
+            if (ei_pending) begin
+              IME <= 1'b1;
+              ei_pending <= 1'b0;
+            end
+
             if (stopped || halted) begin
               if ((IE & IF) != 0) begin
                 halted <= 1'b0;
@@ -340,6 +358,15 @@ module cpu (
             is_rra <= 1'b0;
             is_stop_n8 <= 1'b0;
             is_halt <= 1'b0;
+            is_ei <= 1'b0;
+            is_di <= 1'b0;
+            is_prefix <= 1'b0;
+            is_jp_nz_a16 <= 1'b0;
+            is_jp_nc_a16 <= 1'b0;
+            is_jp_a16    <= 1'b0;
+            is_jp_hl <= 1'b0;
+            is_jp_z_a16 <= 1'b1;
+            is_jp_c_a16 <= 1'b1;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -412,6 +439,15 @@ module cpu (
               8'h1F: is_rra <= 1'b1;
               8'h10: is_stop_n8 <= 1'b1;
               8'h76: is_halt <= 1'b1;
+              8'hFB: is_ei <= 1'b1;
+              8'hF3: is_di <= 1'b1;
+              8'hCB: is_prefix <= 1'b1;
+              8'hC2: is_jp_nz_a16 <= 1'b1;
+              8'hD2: is_jp_nc_a16 <= 1'b1;
+              8'hC3: is_jp_a16 <= 1'b1;
+              8'hE9: is_jp_hl <= 1'b1;
+              8'hCA: is_jp_z_a16 <= 1'b1;
+              8'hDA: is_jp_c_a16 <= 1'b1;
 
               default: ;
             endcase
@@ -1166,6 +1202,47 @@ module cpu (
                 M_CYCLE_MAX <= 1;
               end
             end
+          end else if (is_jp_nz_a16) begin
+            if (!f[7]) begin
+              pc <= imm16;
+              M_CYCLE_MAX <= 3;
+            end else begin
+              M_CYCLE_MAX <= 2;
+            end
+          end else if (is_jp_nc_a16) begin
+            if (!f[4]) begin
+              pc <= imm16;
+              M_CYCLE_MAX <= 3;
+            end else begin
+              M_CYCLE_MAX <= 2;
+            end
+          end else if (is_jp_a16) begin
+            pc <= imm16;
+          end else if (is_jp_hl) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_a_sel <= 3'd4;
+              reg_b_sel <= 3'd5;
+            end
+
+            if (m_cycle == 3 && t_state == 0) begin
+              pc <= {reg_a, reg_b};
+            end
+          end else if (is_jp_z_a16) begin
+            if (f[7]) begin
+              pc <= imm16;
+              M_CYCLE_MAX <= 3;
+            end
+          end else if (is_jp_c_a16) begin
+            if (f[4]) begin
+              pc <= imm16;
+              M_CYCLE_MAX <= 3;
+            end
+          end else if (is_ei) begin
+            ei_pending <= 1'b1;
+          end else if (is_di) begin
+            IME <= 1'b0;
+          end else if (is_prefix) begin
+            // TODO CB instructions
           end
         end
 
