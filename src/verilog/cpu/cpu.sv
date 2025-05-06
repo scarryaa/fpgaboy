@@ -72,6 +72,10 @@ module cpu (
   logic [7:0] f;
   logic [15:0] temp_hl;
   logic [15:0] temp;
+  logic stopped;
+  logic halted;
+  logic [7:0] IE;
+  logic [7:0] IF;
 
   logic is_ld_r_r;
   logic is_ld_r_imm;
@@ -137,6 +141,8 @@ module cpu (
   logic is_rla;
   logic is_rrca;
   logic is_rra;
+  logic is_stop_n8;
+  logic is_halt;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -193,12 +199,23 @@ module cpu (
         next_m_cycle = 0;
 
         case (state)
-          FETCH:          next_state = DECODE;
+          FETCH: begin
+            if (stopped || halted) begin
+              if ((IE & IF) != 0) begin
+                halted <= 1'b0;
+              end
+
+              // TODO resume from stop
+              next_state = FETCH;
+            end else begin
+              next_state = DECODE;
+            end
+          end
           DECODE: begin
             if (is_ld_a_imm16 || is_ld_imm16_a || is_ld_rr_imm) next_state = FETCH_IMM16_LO;
             else if (is_ld_r_imm || is_ld_hl_sp_e8 || is_add_sp_e8 || is_add_a_n8 || is_sub_a_n8 || is_and_a_n8 || is_or_a_n8 || is_adc_a_n8 || is_sbc_a_n8 || is_xor_a_n8 || is_cp_a_n8)
               next_state = FETCH_IMM;
-            else if (is_ld_hl_imm || is_jr_nz_e8 || is_jr_nc_e8 || is_jr_e8 || is_jr_z_e8 || is_jr_c_e8)
+            else if (is_ld_hl_imm || is_jr_nz_e8 || is_jr_nc_e8 || is_jr_e8 || is_jr_z_e8 || is_jr_c_e8 || is_stop_n8)
               next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
             else if (is_ldh_a_imm) next_state = FETCH_IMM;
@@ -321,6 +338,8 @@ module cpu (
             is_rla <= 1'b0;
             is_rrca <= 1'b0;
             is_rra <= 1'b0;
+            is_stop_n8 <= 1'b0;
+            is_halt <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -391,6 +410,8 @@ module cpu (
               8'h17: is_rla <= 1'b1;
               8'h0F: is_rrca <= 1'b1;
               8'h1F: is_rra <= 1'b1;
+              8'h10: is_stop_n8 <= 1'b1;
+              8'h76: is_halt <= 1'b1;
 
               default: ;
             endcase
@@ -1113,6 +1134,15 @@ module cpu (
               f[5]   <= 1'b0;
               f[4]   <= reg_a[0];
               f[3:0] <= 4'b0000;
+            end
+          end else if (is_stop_n8) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              pc <= pc + 2;
+              stopped <= 1'b1;
+            end
+          end else if (is_halt) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              halted <= 1'b1;
             end
           end else if (is_jr_e8) begin
             if (m_cycle == 2 && t_state == 0) begin
