@@ -219,6 +219,10 @@ module cpu (
             is_ld_rr_imm <= 1'b0;
             is_inc_rr <= 1'b0;
             is_dec_rr <= 1'b0;
+            is_inc_r <= 1'b0;
+            is_dec_r <= 1'b0;
+            is_dec_hl_mem <= 1'b0;
+            is_inc_hl_mem <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -243,10 +247,10 @@ module cpu (
               8'h01, 8'h11, 8'h21, 8'h31: is_ld_rr_imm <= 1'b1;
               8'h03, 8'h13, 8'h23, 8'h33: is_inc_rr <= 1'b1;
               8'h0B, 8'h1B, 8'h2B, 8'h3B: is_dec_rr <= 1'b1;
-              8'h04, 8'h14, 8'h24, 8'h0C, 8'h1C, 8'h2C, 8'h3C: is_inc_r = 1'b1;
-              8'h05, 8'h15, 8'h25, 8'h0D, 8'h1D, 8'h2D, 8'h3D: is_dec_r = 1'b1;
-              8'h34: is_inc_hl_mem = 1'b1;
-              8'h35: is_dec_hl_mem = 1'b1;
+              8'h04, 8'h14, 8'h24, 8'h0C, 8'h1C, 8'h2C, 8'h3C: is_inc_r <= 1'b1;
+              8'h05, 8'h15, 8'h25, 8'h0D, 8'h1D, 8'h2D, 8'h3D: is_dec_r <= 1'b1;
+              8'h34: is_inc_hl_mem <= 1'b1;
+              8'h35: is_dec_hl_mem <= 1'b1;
 
               default: ;
             endcase
@@ -607,9 +611,18 @@ module cpu (
 
               default: ;
             endcase
-          end else
-          if (is_inc_hl_mem) begin
+          end else if (is_inc_hl_mem) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              reg_a_sel <= 3'd4;
+              reg_b_sel <= 3'd5;
+              o_mem_rd_addr <= {reg_a, reg_b};
+            end
           end else if (is_dec_hl_mem) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              reg_a_sel <= 3'd4;
+              reg_b_sel <= 3'd5;
+              o_mem_rd_addr <= {reg_a, reg_b};
+            end
           end
         end
 
@@ -732,21 +745,49 @@ module cpu (
               default: ;
             endcase
           end else if (is_inc_r) begin
-            reg_wr_en <= 1'b1;
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_wr_en <= 1'b1;
 
-            f[7]   = (reg_wr_data == 8'h00);
-            f[6]   = 1'b0;
-            f[5]   = ((reg_a & 8'h0F) + 1 > 4'hF);
-            f[4]   = f[4];
-            f[3:0] = 4'b0000;
+              f[7]   = (reg_wr_data == 8'h00);
+              f[6]   = 1'b0;
+              f[5]   = ((reg_a & 8'h0F) + 1 > 4'hF);
+              f[4]   = f[4];
+              f[3:0] = 4'b0000;
+            end
           end else if (is_dec_r) begin
-            reg_wr_en <= 1'b1;
+            if (m_cycle == 0 && t_state == 0) begin
+              reg_wr_en <= 1'b1;
 
-            f[7]   = (reg_wr_data == 8'h00);
-            f[6]   = 1'b1;
-            f[5]   = ((reg_a & 8'h0F) == 8'h00);
-            f[4]   = f[4];
-            f[3:0] = 4'b0000;
+              f[7]   = (reg_wr_data == 8'h00);
+              f[6]   = 1'b1;
+              f[5]   = ((reg_a & 8'h0F) == 8'h00);
+              f[4]   = f[4];
+              f[3:0] = 4'b0000;
+            end
+          end else if (is_inc_hl_mem) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              o_mem_wr_addr <= {reg_a, reg_b};
+              o_mem_wr_data <= i_mem_rd_data + 1;
+              o_mem_wr_en   <= 1'b1;
+
+              f[7]   = (o_mem_wr_data == 8'h00);
+              f[6]   = 1'b0;
+              f[5]   = ((i_mem_rd_data & 8'h0F) + 1 > 4'hF);
+              f[4]   = f[4];
+              f[3:0] = 4'b0000;
+            end
+          end else if (is_dec_hl_mem) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              o_mem_wr_addr <= {reg_a, reg_b};
+              o_mem_wr_data <= i_mem_rd_data - 1;
+              o_mem_wr_en   <= 1'b1;
+
+              f[7]   = (o_mem_wr_data == 8'h00);
+              f[6]   = 1'b1;
+              f[5]   = ((i_mem_rd_data & 8'h0F) == 0);
+              f[4]   = f[4];
+              f[3:0] = 4'b0000;
+            end
           end
         end
 
