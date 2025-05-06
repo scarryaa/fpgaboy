@@ -124,6 +124,12 @@ module cpu (
   logic is_sbc_a_n8;
   logic is_xor_a_n8;
   logic is_cp_a_n8;
+  logic is_jr_nz_e8;
+  logic is_jr_nc_e8;
+  logic is_jr_e8;
+  logic is_jr_z_e8;
+  logic is_jr_c_e8;
+  logic is_scf;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -149,6 +155,12 @@ module cpu (
       8'hE8: get_m_cycles = 4;
       8'h86, 8'h96, 8'hA6, 8'hB6, 8'hC6, 8'hD6, 8'hE6, 8'hF6: get_m_cycles = 2;
       8'h8E, 8'h9E, 8'hAE, 8'hBE, 8'hCE, 8'hDE, 8'hEE, 8'hFE: get_m_cycles = 2;
+      8'h20: get_m_cycles = 2;
+      8'h30: get_m_cycles = 2;
+      8'h37: get_m_cycles = 1;
+      8'h18: get_m_cycles = 3;
+      8'h28: get_m_cycles = 2;
+      8'h38: get_m_cycles = 2;
 
       default: get_m_cycles = 1;
     endcase
@@ -180,7 +192,8 @@ module cpu (
             if (is_ld_a_imm16 || is_ld_imm16_a || is_ld_rr_imm) next_state = FETCH_IMM16_LO;
             else if (is_ld_r_imm || is_ld_hl_sp_e8 || is_add_sp_e8 || is_add_a_n8 || is_sub_a_n8 || is_and_a_n8 || is_or_a_n8 || is_adc_a_n8 || is_sbc_a_n8 || is_xor_a_n8 || is_cp_a_n8)
               next_state = FETCH_IMM;
-            else if (is_ld_hl_imm) next_state = FETCH_IMM;
+            else if (is_ld_hl_imm || is_jr_nz_e8 || is_jr_nc_e8 || is_jr_e8 || is_jr_z_e8 || is_jr_c_e8)
+              next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
             else if (is_ldh_a_imm) next_state = FETCH_IMM;
             else if (is_ld_a16_sp) next_state = FETCH_IMM16_LO;
@@ -289,6 +302,12 @@ module cpu (
             is_sbc_a_n8 <= 1'b0;
             is_xor_a_n8 <= 1'b0;
             is_cp_a_n8 <= 1'b0;
+            is_jr_nz_e8 <= 1'b0;
+            is_jr_nc_e8 <= 1'b0;
+            is_scf <= 1'b0;
+            is_jr_e8 <= 1'b0;
+            is_jr_z_e8 <= 1'b0;
+            is_jr_c_e8 <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -346,6 +365,12 @@ module cpu (
               8'hDE: is_sbc_a_n8 <= 1'b1;
               8'hEE: is_xor_a_n8 <= 1'b1;
               8'hFE: is_cp_a_n8 <= 1'b1;
+              8'h20: is_jr_nz_e8 <= 1'b1;
+              8'h30: is_jr_nc_e8 <= 1'b1;
+              8'h37: is_scf <= 1'b1;
+              8'h18: is_jr_e8 <= 1'b1;
+              8'h28: is_jr_z_e8 <= 1'b1;
+              8'h38: is_jr_c_e8 <= 1'b1;
 
               default: ;
             endcase
@@ -958,6 +983,54 @@ module cpu (
           end else if (is_cp_a_n8) begin
             if (m_cycle == 1 && t_state == 0) begin
               reg_a_sel <= 3'd7;
+            end
+          end else if (is_jr_nz_e8) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              if (!f[7]) begin
+                M_CYCLE_MAX <= 2;
+                pc <= pc + {{8{imm[7]}}, imm};
+              end else begin
+                M_CYCLE_MAX <= 1;
+              end
+            end
+          end else if (is_jr_nc_e8) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              if (!f[4]) begin
+                pc <= pc + {{8{imm[7]}}, imm};
+                M_CYCLE_MAX <= 2;
+              end else begin
+                M_CYCLE_MAX <= 1;
+              end
+            end
+          end else if (is_scf) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              f[7]   = f[7];
+              f[6]   = 1'b0;
+              f[5]   = 1'b0;
+              f[4]   = 1'b1;
+              f[3:0] = 4'b0000;
+            end
+          end else if (is_jr_e8) begin
+            if (m_cycle == 2 && t_state == 0) begin
+              pc <= pc + {{8{imm[7]}}, imm};
+            end
+          end else if (is_jr_z_e8) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              if (f[7]) begin
+                M_CYCLE_MAX <= 2;
+                pc <= pc + {{8{imm[7]}}, imm};
+              end else begin
+                M_CYCLE_MAX <= 1;
+              end
+            end
+          end else if (is_jr_c_e8) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              if (f[4]) begin
+                M_CYCLE_MAX <= 2;
+                pc <= pc + {{8{imm[7]}}, imm};
+              end else begin
+                M_CYCLE_MAX <= 1;
+              end
             end
           end
         end
