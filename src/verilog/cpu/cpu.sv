@@ -103,6 +103,7 @@ module cpu (
   logic is_add_r_r;
   logic is_adc_r_r;
   logic is_sub_r_r;
+  logic is_sbc_r_r;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -247,6 +248,7 @@ module cpu (
             is_add_r_r <= 1'b0;
             is_adc_r_r <= 1'b0;
             is_sub_r_r <= 1'b0;
+            is_sbc_r_r <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -283,6 +285,7 @@ module cpu (
               8'h80, 8'h81, 8'h82, 8'h83, 8'h84, 8'h85, 8'h87: is_add_r_r <= 1'b1;
               8'h88, 8'h89, 8'h8A, 8'h8B, 8'h8C, 8'h8D, 8'h8F: is_adc_r_r <= 1'b1;
               8'h90, 8'h91, 8'h92, 8'h93, 8'h94, 8'h95, 8'h97: is_sub_r_r <= 1'b1;
+              8'h98, 8'h99, 8'h9A, 8'h9B, 8'h9C, 8'h9D, 8'h9F: is_sbc_r_r <= 1'b1;
 
               default: ;
             endcase
@@ -733,6 +736,21 @@ module cpu (
 
               default: ;
             endcase
+          end else if (is_sbc_r_r) begin
+            reg_a_sel  <= 3'd7;
+            reg_wr_sel <= 3'd7;
+
+            case (ir)
+              8'h98: reg_b_sel <= 3'd0;
+              8'h99: reg_b_sel <= 3'd1;
+              8'h9A: reg_b_sel <= 3'd2;
+              8'h9B: reg_b_sel <= 3'd3;
+              8'h9C: reg_b_sel <= 3'd4;
+              8'h9D: reg_b_sel <= 3'd5;
+              8'h9F: reg_b_sel <= 3'd7;
+
+              default: ;
+            endcase
           end
         end
 
@@ -1034,6 +1052,25 @@ module cpu (
               f[7]   = (diff8 == 8'h00);
               f[6]   = 1'b1;
               f[5]   = ((reg_a & 8'h0F) < (reg_b & 8'h0F));
+              f[4]   = diff9[8];
+              f[3:0] = 4'b0000;
+
+              reg_wr_data <= diff8;
+              reg_wr_en   <= 1'b1;
+            end
+          end else if (is_sbc_r_r) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              logic [7:0] diff8;
+              logic [8:0] diff9;
+              logic carry;
+
+              carry  = f[4];
+              diff8  = reg_a - reg_b - {7'b0, carry};
+              diff9  = {1'b0, reg_a} - {1'b0, reg_b} - {8'b0, carry};
+
+              f[7]   = (diff8 == 8'h00);
+              f[6]   = 1'b1;
+              f[5]   = ((reg_a & 8'h0F) < ((reg_b & 8'h0F) + (carry ? 8'h01 : 8'h00)));
               f[4]   = diff9[8];
               f[3:0] = 4'b0000;
 
