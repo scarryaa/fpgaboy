@@ -108,6 +108,8 @@ module cpu (
   logic is_xor_a_r;
   logic is_or_a_r;
   logic is_cp_a_r;
+  logic is_add_a_hl_mem;
+  logic is_sub_a_hl_mem;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -131,6 +133,7 @@ module cpu (
       8'hF9: get_m_cycles = 2;
       8'hF8: get_m_cycles = 3;
       8'hE8: get_m_cycles = 4;
+      8'h86, 8'h96, 8'hA6, 8'hB6, 8'hC6, 8'hD6, 8'hE6, 8'hF6: get_m_cycles = 2;
 
       default: get_m_cycles = 1;
     endcase
@@ -255,6 +258,7 @@ module cpu (
             is_sbc_r_r <= 1'b0;
             is_and_a_r <= 1'b0;
             is_or_a_r <= 1'b0;
+            is_add_a_hl_mem <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -296,6 +300,8 @@ module cpu (
               8'hA8, 8'hA9, 8'hAA, 8'hAB, 8'hAC, 8'hAD, 8'hAF: is_xor_a_r <= 1'b1;
               8'hB0, 8'hB1, 8'hB2, 8'hB3, 8'hB4, 8'hB5, 8'hB7: is_or_a_r <= 1'b1;
               8'hB8, 8'hB9, 8'hBA, 8'hBB, 8'hBC, 8'hBD, 8'hBF: is_cp_a_r <= 1'b1;
+              8'h86: is_add_a_hl_mem <= 1'b1;
+              8'h96: is_sub_a_hl_mem <= 1'b1;
 
               default: ;
             endcase
@@ -821,6 +827,20 @@ module cpu (
 
               default: ;
             endcase
+          end else if (is_add_a_hl_mem) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_a_sel <= 3'd4;
+              reg_b_sel <= 3'd5;
+              reg_c_sel <= 3'd7;
+              o_mem_rd_addr <= {reg_a, reg_b};
+            end
+          end else if (is_sub_a_hl_mem) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_a_sel <= 3'd4;
+              reg_b_sel <= 3'd5;
+              reg_c_sel <= 3'd7;
+              o_mem_rd_addr <= {reg_a, reg_b};
+            end
           end
         end
 
@@ -1196,6 +1216,41 @@ module cpu (
               f[5]   = ((reg_a & 8'h0F) < (reg_b & 8'h0F));
               f[4]   = diff9[8];
               f[3:0] = 4'b0000;
+            end
+          end else if (is_add_a_hl_mem) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              logic [7:0] sum8;
+              logic [8:0] sum9;
+              sum8   = reg_c + i_mem_rd_data;
+              sum9   = {1'b0, reg_c} + {1'b0, i_mem_rd_data};
+
+              f[7]   = (sum8 == 8'h00);
+              f[6]   = 1'b0;
+              f[5]   = (((reg_c & 8'h0F) + (i_mem_rd_data & 8'h0F)) > 8'h0F);  // H
+              f[4]   = sum9[8];
+              f[3:0] = 4'b0000;
+
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= sum8;
+              reg_wr_en   <= 1'b1;
+            end
+          end else if (is_sub_a_hl_mem) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              logic [7:0] diff8;
+              logic [8:0] diff9;
+
+              diff8  = reg_c - i_mem_rd_data;
+              diff9  = {1'b0, reg_c} - {1'b0, i_mem_rd_data};
+
+              f[7]   = (diff8 == 8'h00);
+              f[6]   = 1'b1;
+              f[5]   = ((reg_c & 8'h0F) < (i_mem_rd_data & 8'h0F));
+              f[4]   = diff9[8];
+              f[3:0] = 4'b0000;
+
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= diff8;
+              reg_wr_en   <= 1'b1;
             end
           end
         end
