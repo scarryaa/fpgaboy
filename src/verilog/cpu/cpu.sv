@@ -179,6 +179,8 @@ module cpu (
   logic is_rst_18;
   logic is_rst_28;
   logic is_rst_38;
+  logic is_ret;
+  logic is_reti;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -218,6 +220,7 @@ module cpu (
       8'hC7, 8'hD7, 8'hE7, 8'hF7: get_m_cycles = 4;
       8'hCF, 8'hDF, 8'hEF, 8'hFF: get_m_cycles = 4;
       8'hC8, 8'hD8: get_m_cycles = 5;
+      8'hC9, 8'hD9: get_m_cycles = 4;
 
       default: get_m_cycles = 1;
     endcase
@@ -294,6 +297,7 @@ module cpu (
         if (is_ei) ei_pending_next = 1'b1;
         if (is_di) IME_next = 1'b0;
         if (is_halt) halted_next = 1'b1;
+        if (is_reti) IME_next = 1'b1;
       end
     end
   end
@@ -451,6 +455,8 @@ module cpu (
             is_rst_18 <= 1'b0;
             is_rst_28 <= 1'b0;
             is_rst_38 <= 1'b0;
+            is_ret <= 1'b0;
+            is_reti <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -554,6 +560,8 @@ module cpu (
               8'hFF: is_rst_38 <= 1'b1;
               8'hC8: is_ret_z <= 1'b1;
               8'hD8: is_ret_c <= 1'b1;
+              8'hC9: is_ret <= 1'b1;
+              8'hD9: is_reti <= 1'b1;
 
               default: ;
             endcase
@@ -1449,6 +1457,14 @@ module cpu (
                 o_mem_rd_addr <= sp + 1;
               end
             end
+          end else if (is_ret || is_reti) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              o_mem_rd_addr <= sp;
+            end else if (m_cycle == 0 && t_state == 3) begin
+              prev_mem_rd_data <= i_mem_rd_data;
+            end else if (m_cycle == 1 && t_state == 0) begin
+              o_mem_rd_addr <= sp + 1;
+            end
           end else if (is_call_nz_a16) begin
             if (!f[7]) begin
               if (m_cycle == 0 && t_state == 0) begin
@@ -2199,6 +2215,11 @@ module cpu (
               sp <= sp + 16'd2;
             end
           end else if (is_ret_c && f[4]) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              pc <= {i_mem_rd_data, prev_mem_rd_data};
+              sp <= sp + 16'd2;
+            end
+          end else if (is_ret || is_reti) begin
             if (m_cycle == 1 && t_state == 0) begin
               pc <= {i_mem_rd_data, prev_mem_rd_data};
               sp <= sp + 16'd2;
