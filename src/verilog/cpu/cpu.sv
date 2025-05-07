@@ -167,6 +167,8 @@ module cpu (
   logic is_push_af;
   logic is_ret_nz;
   logic is_ret_nc;
+  logic is_ret_z;
+  logic is_ret_c;
   logic is_call_nz_a16;
   logic is_call_nc_a16;
   logic is_rst_00;
@@ -215,6 +217,7 @@ module cpu (
       8'hC4, 8'hD4: get_m_cycles = 6;
       8'hC7, 8'hD7, 8'hE7, 8'hF7: get_m_cycles = 4;
       8'hCF, 8'hDF, 8'hEF, 8'hFF: get_m_cycles = 4;
+      8'hC8, 8'hD8: get_m_cycles = 5;
 
       default: get_m_cycles = 1;
     endcase
@@ -436,6 +439,8 @@ module cpu (
             is_push_af <= 1'b0;
             is_ret_nz <= 1'b0;
             is_ret_nc <= 1'b0;
+            is_ret_z <= 1'b0;
+            is_ret_c <= 1'b0;
             is_call_nz_a16 <= 1'b0;
             is_call_nc_a16 <= 1'b0;
             is_rst_00 <= 1'b0;
@@ -547,6 +552,8 @@ module cpu (
               8'hDF: is_rst_18 <= 1'b1;
               8'hEF: is_rst_28 <= 1'b1;
               8'hFF: is_rst_38 <= 1'b1;
+              8'hC8: is_ret_z <= 1'b1;
+              8'hD8: is_ret_c <= 1'b1;
 
               default: ;
             endcase
@@ -1410,6 +1417,38 @@ module cpu (
                 o_mem_rd_addr <= sp + 1;
               end
             end
+          end else if (is_ret_z) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              if (f[7]) begin 
+                M_CYCLE_MAX <= 4;
+                o_mem_rd_addr <= sp;
+              end else begin
+                M_CYCLE_MAX <= 1;
+              end
+            end
+            if (f[7]) begin
+              if (m_cycle == 0 && t_state == 3) begin
+                prev_mem_rd_data <= i_mem_rd_data;
+              end else if (m_cycle == 1 && t_state == 0) begin
+                o_mem_rd_addr <= sp + 1;
+              end
+            end
+          end else if (is_ret_c) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              if (f[4]) begin
+                M_CYCLE_MAX <= 4;
+                o_mem_rd_addr <= sp;
+              end else begin
+                M_CYCLE_MAX <= 1;
+              end
+            end
+            if (f[4]) begin
+              if (m_cycle == 0 && t_state == 3) begin
+                prev_mem_rd_data <= i_mem_rd_data;
+              end else if (m_cycle == 1 && t_state == 0) begin
+                o_mem_rd_addr <= sp + 1;
+              end
+            end
           end else if (is_call_nz_a16) begin
             if (!f[7]) begin
               if (m_cycle == 0 && t_state == 0) begin
@@ -2150,6 +2189,16 @@ module cpu (
               sp <= sp + 16'd2;
             end
           end else if (is_ret_nc && !f[4]) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              pc <= {i_mem_rd_data, prev_mem_rd_data};
+              sp <= sp + 16'd2;
+            end
+          end else if (is_ret_z && f[7]) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              pc <= {i_mem_rd_data, prev_mem_rd_data};
+              sp <= sp + 16'd2;
+            end
+          end else if (is_ret_c && f[4]) begin
             if (m_cycle == 1 && t_state == 0) begin
               pc <= {i_mem_rd_data, prev_mem_rd_data};
               sp <= sp + 16'd2;
