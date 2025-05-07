@@ -173,6 +173,10 @@ module cpu (
   logic is_rst_10;
   logic is_rst_20;
   logic is_rst_30;
+  logic is_rst_08;
+  logic is_rst_18;
+  logic is_rst_28;
+  logic is_rst_38;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -210,6 +214,7 @@ module cpu (
       8'hC0, 8'hD0: get_m_cycles = 5;
       8'hC4, 8'hD4: get_m_cycles = 6;
       8'hC7, 8'hD7, 8'hE7, 8'hF7: get_m_cycles = 4;
+      8'hCF, 8'hDF, 8'hEF, 8'hFF: get_m_cycles = 4;
 
       default: get_m_cycles = 1;
     endcase
@@ -295,6 +300,10 @@ module cpu (
     else if (is_rst_10)  rst_addr = 16'h0010;
     else if (is_rst_20)  rst_addr = 16'h0020;
     else if (is_rst_30)  rst_addr = 16'h0030;
+    else if (is_rst_08)  rst_addr = 16'h0008;
+    else if (is_rst_18)  rst_addr = 16'h0018;
+    else if (is_rst_28)  rst_addr = 16'h0028;
+    else if (is_rst_38)  rst_addr = 16'h0038;
     else                 rst_addr = 16'h0000;
   end
 
@@ -433,6 +442,10 @@ module cpu (
             is_rst_10 <= 1'b0;
             is_rst_20 <= 1'b0;
             is_rst_30 <= 1'b0;
+            is_rst_08 <= 1'b0;
+            is_rst_18 <= 1'b0;
+            is_rst_28 <= 1'b0;
+            is_rst_38 <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -530,6 +543,10 @@ module cpu (
               8'hD7: is_rst_10 <= 1'b1;
               8'hE7: is_rst_20 <= 1'b1;
               8'hF7: is_rst_30 <= 1'b1;
+              8'hCF: is_rst_08 <= 1'b1;
+              8'hDF: is_rst_18 <= 1'b1;
+              8'hEF: is_rst_28 <= 1'b1;
+              8'hFF: is_rst_38 <= 1'b1;
 
               default: ;
             endcase
@@ -1431,7 +1448,7 @@ module cpu (
             end else begin
               M_CYCLE_MAX <= 2;
             end
-          end else if (is_rst_00 || is_rst_10 || is_rst_20 || is_rst_30) begin
+          end else if (is_rst_00 || is_rst_10 || is_rst_20 || is_rst_30 || is_rst_08 || is_rst_18 || is_rst_28 || is_rst_38) begin
             case (m_cycle)
               0: begin
                 sp_temp <= sp - 1;
