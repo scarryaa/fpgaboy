@@ -72,12 +72,13 @@ module cpu (
   logic [7:0] f;
   logic [15:0] temp_hl;
   logic [15:0] temp;
+  logic [7:0] prev_mem_rd_data;
   logic stopped;
-  logic halted;
   logic [7:0] IE;
   logic [7:0] IF;
-  logic IME;
-  logic ei_pending;
+  logic IME, IME_next;
+  logic ei_pending, ei_pending_next;
+  logic halted, halted_next;
 
   logic is_ld_r_r;
   logic is_ld_r_imm;
@@ -154,6 +155,10 @@ module cpu (
   logic is_ei;
   logic is_di;
   logic is_prefix;
+  logic is_pop_bc;
+  logic is_pop_de;
+  logic is_pop_hl;
+  logic is_pop_af;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -186,6 +191,7 @@ module cpu (
       8'h38: get_m_cycles = 2;
       8'hC2, 8'hD2, 8'hCA, 8'hDA: get_m_cycles = 3;
       8'hC3: get_m_cycles = 4;
+      8'hC1, 8'hD1, 8'hE1, 8'hF1: get_m_cycles = 3;
 
       default: get_m_cycles = 1;
     endcase
@@ -197,9 +203,12 @@ module cpu (
 
   // State logic
   always_comb begin
-    next_state   = state;
-    next_m_cycle = m_cycle;
-    next_t_state = t_state;
+    next_state      = state;
+    next_m_cycle    = m_cycle;
+    next_t_state    = t_state;
+    IME_next        = IME;
+    ei_pending_next = ei_pending;
+    halted_next     = halted;
 
     if (t_state < T_STATE_MAX) begin
       next_t_state = t_state + 1;
@@ -214,32 +223,37 @@ module cpu (
         case (state)
           FETCH: begin
             if (ei_pending) begin
-              IME <= 1'b1;
-              ei_pending <= 1'b0;
+              IME_next        = 1'b1;
+              ei_pending_next = 1'b0;
             end
 
             if (stopped || halted) begin
               if ((IE & IF) != 0) begin
-                halted <= 1'b0;
+                halted_next = 1'b0;
               end
-
               // TODO resume from stop
               next_state = FETCH;
             end else begin
               next_state = DECODE;
             end
           end
+
           DECODE: begin
             if (is_ld_a_imm16 || is_ld_imm16_a || is_ld_rr_imm) next_state = FETCH_IMM16_LO;
-            else if (is_ld_r_imm || is_ld_hl_sp_e8 || is_add_sp_e8 || is_add_a_n8 || is_sub_a_n8 || is_and_a_n8 || is_or_a_n8 || is_adc_a_n8 || is_sbc_a_n8 || is_xor_a_n8 || is_cp_a_n8)
+            else if (is_ld_r_imm || is_ld_hl_sp_e8 || is_add_sp_e8 ||
+                   is_add_a_n8 || is_sub_a_n8 || is_and_a_n8 ||
+                   is_or_a_n8 || is_adc_a_n8 || is_sbc_a_n8 ||
+                   is_xor_a_n8 || is_cp_a_n8)
               next_state = FETCH_IMM;
-            else if (is_ld_hl_imm || is_jr_nz_e8 || is_jr_nc_e8 || is_jr_e8 || is_jr_z_e8 || is_jr_c_e8 || is_stop_n8)
+            else if (is_ld_hl_imm || is_jr_nz_e8 || is_jr_nc_e8 ||
+                   is_jr_e8 || is_jr_z_e8 || is_jr_c_e8 || is_stop_n8)
               next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
             else if (is_ldh_a_imm) next_state = FETCH_IMM;
             else if (is_ld_a16_sp) next_state = FETCH_IMM16_LO;
             else next_state = EXECUTE;
           end
+
           FETCH_IMM:      next_state = LATCH_IMM;
           LATCH_IMM:      next_state = EXECUTE;
           FETCH_IMM16_LO: next_state = FETCH_IMM16_HI;
@@ -250,6 +264,10 @@ module cpu (
 
           default: next_state = FETCH;
         endcase
+
+        if (is_ei) ei_pending_next = 1'b1;
+        if (is_di) IME_next = 1'b0;
+        if (is_halt) halted_next = 1'b1;
       end
     end
   end
@@ -257,28 +275,34 @@ module cpu (
   // State machine
   always_ff @(posedge i_clk, posedge i_rst) begin
     if (i_rst) begin
-      o_mem_wr_en <= 1'b0;
+      o_mem_wr_en   <= 1'b0;
       o_mem_rd_addr <= 16'h0;
       o_mem_wr_addr <= 16'h0;
       o_mem_wr_data <= 8'h0;
-      pc <= 16'h0100;
-      sp <= 16'hFFFE;
+      IME           <= 1'b0;
+      ei_pending    <= 1'b0;
+      halted        <= 1'b0;
+      pc            <= 16'h0100;
+      sp            <= 16'hFFFE;
 
-      state <= FETCH;
-      m_cycle <= 0;
-      t_state <= 0;
-      M_CYCLE_MAX <= 0;
-      T_STATE_MAX <= 0;
+      state         <= FETCH;
+      m_cycle       <= 0;
+      t_state       <= 0;
+      M_CYCLE_MAX   <= 0;
+      T_STATE_MAX   <= 0;
     end else begin
-      o_mem_wr_en <= 1'b0;
+      o_mem_wr_en   <= 1'b0;
       o_mem_wr_data <= 8'h0;
-      reg_wr_en <= 1'b0;
-      bc_wr_en <= 1'b0;
-      de_wr_en <= 1'b0;
-      hl_wr_en <= 1'b0;
-      state <= next_state;
-      m_cycle <= next_m_cycle;
-      t_state <= next_t_state;
+      reg_wr_en     <= 1'b0;
+      bc_wr_en      <= 1'b0;
+      de_wr_en      <= 1'b0;
+      hl_wr_en      <= 1'b0;
+      state         <= next_state;
+      m_cycle       <= next_m_cycle;
+      t_state       <= next_t_state;
+      IME           <= IME_next;
+      ei_pending    <= ei_pending_next;
+      halted        <= halted_next;
 
       case (state)
         FETCH: begin
@@ -367,6 +391,10 @@ module cpu (
             is_jp_hl <= 1'b0;
             is_jp_z_a16 <= 1'b1;
             is_jp_c_a16 <= 1'b1;
+            is_pop_bc <= 1'b1;
+            is_pop_de <= 1'b1;
+            is_pop_hl <= 1'b1;
+            is_pop_af <= 1'b1;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -448,6 +476,10 @@ module cpu (
               8'hE9: is_jp_hl <= 1'b1;
               8'hCA: is_jp_z_a16 <= 1'b1;
               8'hDA: is_jp_c_a16 <= 1'b1;
+              8'hC1: is_pop_bc <= 1'b1;
+              8'hD1: is_pop_de <= 1'b1;
+              8'hE1: is_pop_hl <= 1'b1;
+              8'hF1: is_pop_af <= 1'b1;
 
               default: ;
             endcase
@@ -1129,7 +1161,9 @@ module cpu (
                 end
               end
 
-              reg_a  = a_new[7:0];
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= a_new[7:0];
+              reg_wr_en   <= 1'b1;
               f[7]   = (a_new[7:0] == 8'h00);
               f[5]   = 1'b0;
               f[4]   = c_new;
@@ -1137,39 +1171,47 @@ module cpu (
             end
           end else if (is_rlca) begin
             if (m_cycle == 0 && t_state == 0) begin
-              reg_a  <= {reg_a[6:0], reg_a[7]};
-              f[7]   <= 1'b0;
-              f[6]   <= 1'b0;
-              f[5]   <= 1'b0;
-              f[4]   <= reg_a[7];
-              f[3:0] <= 4'b0000;
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= {reg_a[6:0], reg_a[7]};
+              reg_wr_en   <= 1'b1;
+              f[7]   = 1'b0;
+              f[6]   = 1'b0;
+              f[5]   = 1'b0;
+              f[4]   = reg_a[7];
+              f[3:0] = 4'b0000;
             end
           end else if (is_rla) begin
             if (m_cycle == 0 && t_state == 0) begin
-              reg_a  <= {reg_a[6:0], f[4]};
-              f[7]   <= 1'b0;
-              f[6]   <= 1'b0;
-              f[5]   <= 1'b0;
-              f[4]   <= reg_a[7];
-              f[3:0] <= 4'b0000;
+              reg_wr_sel  <= 3'd7;
+              reg_wr_en   <= 1'b1;
+              reg_wr_data <= {reg_a[6:0], f[4]};
+              f[7]   = 1'b0;
+              f[6]   = 1'b0;
+              f[5]   = 1'b0;
+              f[4]   = reg_a[7];
+              f[3:0] = 4'b0000;
             end
           end else if (is_rrca) begin
             if (m_cycle == 0 && t_state == 0) begin
-              reg_a  <= {reg_a[0], reg_a[7:1]};
-              f[7]   <= 1'b0;
-              f[6]   <= 1'b0;
-              f[5]   <= 1'b0;
-              f[4]   <= reg_a[0];
-              f[3:0] <= 4'b0000;
+              reg_wr_sel  <= 3'd7;
+              reg_wr_en   <= 1'b1;
+              reg_wr_data <= {reg_a[0], reg_a[7:1]};
+              f[7]   = 1'b0;
+              f[6]   = 1'b0;
+              f[5]   = 1'b0;
+              f[4]   = reg_a[0];
+              f[3:0] = 4'b0000;
             end
           end else if (is_rra) begin
             if (m_cycle == 0 && t_state == 0) begin
-              reg_a  <= {f[4], reg_a[7:1]};
-              f[7]   <= 1'b0;
-              f[6]   <= 1'b0;
-              f[5]   <= 1'b0;
-              f[4]   <= reg_a[0];
-              f[3:0] <= 4'b0000;
+              reg_wr_sel  <= 3'd7;
+              reg_wr_en   <= 1'b1;
+              reg_wr_data <= {f[4], reg_a[7:1]};
+              f[7]   = 1'b0;
+              f[6]   = 1'b0;
+              f[5]   = 1'b0;
+              f[4]   = reg_a[0];
+              f[3:0] = 4'b0000;
             end
           end else if (is_stop_n8) begin
             if (m_cycle == 0 && t_state == 0) begin
@@ -1237,12 +1279,16 @@ module cpu (
               pc <= imm16;
               M_CYCLE_MAX <= 3;
             end
-          end else if (is_ei) begin
-            ei_pending <= 1'b1;
-          end else if (is_di) begin
-            IME <= 1'b0;
           end else if (is_prefix) begin
             // TODO CB instructions
+          end else if (is_pop_bc || is_pop_de || is_pop_hl || is_pop_af) begin
+            if (m_cycle == 0 && t_state == 0) begin
+              o_mem_rd_addr <= sp;
+            end else if (m_cycle == 0 && t_state == 3) begin
+              prev_mem_rd_data <= i_mem_rd_data;
+            end else if (m_cycle == 1 && t_state == 0) begin
+              o_mem_rd_addr <= sp + 1;
+            end
           end
         end
 
@@ -1894,6 +1940,32 @@ module cpu (
               f[5]   = ((reg_a & 8'h0F) < (imm & 8'h0F)) ? 1'b1 : 1'b0;
               f[4]   = diff9[8];
               f[3:0] = 4'b0000;
+            end
+          end else if (is_pop_bc) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              bc_wr_en   <= 1'b1;
+              bc_wr_data <= {i_mem_rd_data, prev_mem_rd_data};
+              sp         <= sp + 16'd2;
+            end
+          end else if (is_pop_de) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              de_wr_en   <= 1'b1;
+              de_wr_data <= {i_mem_rd_data, prev_mem_rd_data};
+              sp         <= sp + 16'd2;
+            end
+          end else if (is_pop_hl) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              hl_wr_en   <= 1'b1;
+              hl_wr_data <= {i_mem_rd_data, prev_mem_rd_data};
+              sp         <= sp + 16'd2;
+            end
+          end else if (is_pop_af) begin
+            if (m_cycle == 1 && t_state == 0) begin
+              reg_wr_sel  <= 3'd7;
+              reg_wr_data <= i_mem_rd_data;
+              reg_wr_en   <= 1'b1;
+              f = {prev_mem_rd_data & 8'hF0};
+              sp <= sp + 16'd2;
             end
           end
         end
