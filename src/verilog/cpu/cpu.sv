@@ -165,6 +165,8 @@ module cpu (
   logic is_push_af;
   logic is_ret_nz;
   logic is_ret_nc;
+  logic is_call_nz_a16;
+  logic is_call_nc_a16;
 
   function [2:0] get_m_cycles(logic [7:0] ir);
     case (ir)
@@ -200,6 +202,7 @@ module cpu (
       8'hC1, 8'hD1, 8'hE1, 8'hF1: get_m_cycles = 3;
       8'hC5, 8'hD5, 8'hE5, 8'hF5: get_m_cycles = 4;
       8'hC0, 8'hD0: get_m_cycles = 5;
+      8'hC4, 8'hD4: get_m_cycles = 6;
 
       default: get_m_cycles = 1;
     endcase
@@ -258,7 +261,7 @@ module cpu (
               next_state = FETCH_IMM;
             else if (is_ldh_imm_a) next_state = FETCH_IMM;
             else if (is_ldh_a_imm) next_state = FETCH_IMM;
-            else if (is_ld_a16_sp) next_state = FETCH_IMM16_LO;
+            else if (is_ld_a16_sp || is_call_nc_a16 || is_call_nz_a16) next_state = FETCH_IMM16_LO;
             else next_state = EXECUTE;
           end
 
@@ -409,6 +412,8 @@ module cpu (
             is_push_af <= 1'b0;
             is_ret_nz <= 1'b0;
             is_ret_nc <= 1'b0;
+            is_call_nz_a16 <= 1'b0;
+            is_call_nc_a16 <= 1'b0;
 
             case (i_mem_rd_data)
               8'h41, 8'h42, 8'h43, 8'h44, 8'h45, 8'h47, 8'h48, 8'h4A, 8'h4B, 8'h4C, 8'h4D, 8'h4F, 
@@ -500,6 +505,8 @@ module cpu (
               8'hF5: is_push_af <= 1'b1;
               8'hC0: is_ret_nz <= 1'b1;
               8'hD0: is_ret_nc <= 1'b1;
+              8'hC4: is_call_nz_a16 <= 1'b1;
+              8'hD4: is_call_nc_a16 <= 1'b1;
 
               default: ;
             endcase
@@ -1362,6 +1369,44 @@ module cpu (
               end else if (m_cycle == 1 && t_state == 0) begin
                 o_mem_rd_addr <= sp + 1;
               end
+            end
+          end else if (is_call_nz_a16) begin
+            if (!f[7]) begin
+              if (m_cycle == 0 && t_state == 0) begin
+                sp <= sp - 1;
+                o_mem_wr_addr <= sp - 1;
+                o_mem_wr_data <= pc[15:8]; 
+                o_mem_wr_en   <= 1'b1;
+              end else if (m_cycle == 1 && t_state == 0) begin
+                sp <= sp - 1;
+                o_mem_wr_addr <= sp - 1;
+                o_mem_wr_data <= pc[7:0]; 
+                o_mem_wr_en   <= 1'b1;
+              end else if (m_cycle == 2 && t_state == 0) begin
+                pc <= imm16;
+              end
+              M_CYCLE_MAX <= 3;
+            end else begin
+              M_CYCLE_MAX <= 2;
+            end
+          end else if (is_call_nc_a16) begin
+            if (!f[4]) begin
+              if (m_cycle == 0 && t_state == 0) begin
+                sp <= sp - 1;
+                o_mem_wr_addr <= sp - 1;
+                o_mem_wr_data <= pc[15:8];
+                o_mem_wr_en   <= 1'b1;
+              end else if (m_cycle == 1 && t_state == 0) begin
+                sp <= sp - 1;
+                o_mem_wr_addr <= sp - 1;
+                o_mem_wr_data <= pc[7:0];
+                o_mem_wr_en   <= 1'b1;
+              end else if (m_cycle == 2 && t_state == 0) begin
+                pc <= imm16;
+              end
+              M_CYCLE_MAX <= 3;
+            end else begin
+              M_CYCLE_MAX <= 2;
             end
           end
         end
